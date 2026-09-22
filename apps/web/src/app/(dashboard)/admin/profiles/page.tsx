@@ -61,14 +61,8 @@ const LEAD_STATUSES = [
   { value: "PROSPECT", label: "Prospect" },
   { value: "SITE_VISIT_SCHEDULED", label: "Site Visit Scheduled" },
   { value: "SITE_VISIT_HAPPENED", label: "Site Visit Happened" },
-  { value: "SALES", label: "Sales" },
-  { value: "OPPORTUNITY", label: "Opportunity" },
-  { value: "QUOTATION", label: "Quotation" },
-  { value: "APPROVAL", label: "Approval" },
-  { value: "BOOKING", label: "Booking" },
-  { value: "DUPLICATE", label: "Duplicate" },
-  { value: "LOST", label: "Lost" },
   { value: "BOOKED", label: "Booked" },
+  { value: "LOST", label: "Lost" },
 ] as const;
 
 interface Profile {

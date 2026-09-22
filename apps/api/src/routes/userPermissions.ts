@@ -8,7 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 const addDirectPermissionSchema = z.object({
-  permissionIds: z.array(z.string()).min(1),
+  permissionIds: z.array(z.string()).min(1, 'At least one permission is required'),
 });
 
 router.get('/:userId/direct-permissions', requirePermission('USER_PERMISSION_READ'), async (req: AuthRequest, res: Response) => {
@@ -46,21 +46,23 @@ router.post('/:userId/direct-permissions', requirePermission('USER_PERMISSION_AD
 
     const data = addDirectPermissionSchema.parse(req.body);
 
+    const uniquePermissionIds = [...new Set(data.permissionIds)];
+
     const validPermissions = await prisma.permission.findMany({
-      where: { id: { in: data.permissionIds }, isActive: true },
+      where: { id: { in: uniquePermissionIds }, isActive: true },
     });
 
-    if (validPermissions.length !== data.permissionIds.length) {
+    if (validPermissions.length !== uniquePermissionIds.length) {
       return res.status(422).json({ success: false, error: 'One or more invalid permission IDs' });
     }
 
     const existing = await prisma.userDirectPermission.findMany({
-      where: { userId: req.params.userId, permissionId: { in: data.permissionIds } },
+      where: { userId: req.params.userId, permissionId: { in: uniquePermissionIds } },
       select: { permissionId: true },
     });
 
     const existingIds = new Set(existing.map((e) => e.permissionId));
-    const newIds = data.permissionIds.filter((id) => !existingIds.has(id));
+    const newIds = uniquePermissionIds.filter((id) => !existingIds.has(id));
 
     if (newIds.length === 0) {
       return res.status(409).json({ success: false, error: 'All permissions already assigned' });
@@ -83,8 +85,8 @@ router.post('/:userId/direct-permissions', requirePermission('USER_PERMISSION_AD
 
     res.status(201).json({ success: true, data: { added: created.count, alreadyAssigned: existingIds.size } });
   } catch (error: any) {
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ success: false, error: error.errors[0].message });
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: error.issues[0]?.message || 'Invalid permission data' });
     }
     console.error('Add direct permission error:', error);
     res.status(500).json({ success: false, error: 'Failed to add direct permission' });
@@ -159,6 +161,8 @@ router.post('/:userId/permission-sets', requirePermission('PERMISSION_SET_ASSIGN
       return res.status(400).json({ success: false, error: 'permissionSetIds array is required' });
     }
 
+    const uniqueIds = [...new Set(permissionSetIds)];
+
     const user = await prisma.user.findFirst({
       where: { id: req.params.userId, tenantId: req.tenantId! },
     });
@@ -167,13 +171,22 @@ router.post('/:userId/permission-sets', requirePermission('PERMISSION_SET_ASSIGN
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    const validSets = await prisma.newPermissionSet.findMany({
+      where: { id: { in: uniqueIds }, tenantId: req.tenantId!, isActive: true },
+      select: { id: true },
+    });
+
+    if (validSets.length !== uniqueIds.length) {
+      return res.status(422).json({ success: false, error: 'One or more invalid permission set IDs' });
+    }
+
     const existing = await prisma.userPermissionAssignment.findMany({
-      where: { userId: req.params.userId, permissionSetId: { in: permissionSetIds } },
+      where: { userId: req.params.userId, permissionSetId: { in: uniqueIds } },
       select: { permissionSetId: true },
     });
 
     const existingIds = new Set(existing.map((e) => e.permissionSetId));
-    const newIds = permissionSetIds.filter((id: string) => !existingIds.has(id));
+    const newIds = uniqueIds.filter((id: string) => !existingIds.has(id));
 
     if (newIds.length === 0) {
       return res.status(409).json({ success: false, error: 'All permission sets already assigned' });

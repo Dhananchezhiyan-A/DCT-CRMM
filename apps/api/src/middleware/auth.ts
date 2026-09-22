@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
     email: string;
     tenantId: string;
     isSuperAdmin: boolean;
+    impersonatedBy?: string;
   };
   tenantId?: string;
   effectivePermissions?: EffectivePermission[];
@@ -31,15 +32,32 @@ export const authenticate = async (
       email: string;
       tenantId: string;
       isSuperAdmin: boolean;
+      impersonatedBy?: string;
     };
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, tenantId: true, isActive: true, isSuperAdmin: true },
+      select: {
+        id: true, email: true, tenantId: true, isActive: true, isSuperAdmin: true,
+        tenant: { select: { isActive: true, companyStartDate: true, companyExpiryDate: true } },
+      },
     });
 
     if (!user || !user.isActive) {
       return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    }
+
+    if (!user.isSuperAdmin) {
+      const now = new Date();
+      if (!user.tenant.isActive) {
+        return res.status(403).json({ success: false, error: 'Company is inactive. Contact Super Admin.' });
+      }
+      if (user.tenant.companyStartDate && now < user.tenant.companyStartDate) {
+        return res.status(403).json({ success: false, error: 'Company has not started yet. Access begins on ' + user.tenant.companyStartDate.toLocaleDateString() + '.' });
+      }
+      if (user.tenant.companyExpiryDate && now > user.tenant.companyExpiryDate) {
+        return res.status(403).json({ success: false, error: 'Company subscription has expired. Contact Super Admin.' });
+      }
     }
 
     req.user = {
@@ -47,6 +65,7 @@ export const authenticate = async (
       email: user.email,
       tenantId: user.tenantId,
       isSuperAdmin: user.isSuperAdmin,
+      impersonatedBy: decoded.impersonatedBy,
     };
     req.tenantId = user.tenantId;
 
@@ -56,9 +75,9 @@ export const authenticate = async (
   }
 };
 
-export const generateToken = (user: { id: string; email: string; tenantId: string; isSuperAdmin: boolean }) => {
+export const generateToken = (user: { id: string; email: string; tenantId: string; isSuperAdmin: boolean; impersonatedBy?: string }) => {
   return jwt.sign(
-    { id: user.id, email: user.email, tenantId: user.tenantId, isSuperAdmin: user.isSuperAdmin },
+    { id: user.id, email: user.email, tenantId: user.tenantId, isSuperAdmin: user.isSuperAdmin, impersonatedBy: user.impersonatedBy },
     process.env.JWT_SECRET!,
     { expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as any }
   );

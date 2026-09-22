@@ -7,16 +7,17 @@ import { companyApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Save, Upload, X, Loader2, AlertCircle, ImageOff } from "lucide-react";
+import { ArrowLeft, Save, Upload, X, Loader2, AlertCircle, ImageOff, UserPlus, Shield } from "lucide-react";
 
 export default function CompanyFormPage() {
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [logoFile, setLogoFile] = React.useState<File | null>(null);
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
+  const [createAdmin, setCreateAdmin] = React.useState(false);
   const [form, setForm] = React.useState({
     name: "",
     companyCode: "",
@@ -31,10 +32,23 @@ export default function CompanyFormPage() {
     timezone: "",
     currency: "",
     description: "",
+    companyStartDate: "",
+    companyExpiryDate: "",
+  });
+  const [adminForm, setAdminForm] = React.useState({
+    username: "",
+    adminName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
   });
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleAdminChange = (field: string, value: string) => {
+    setAdminForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,9 +99,32 @@ export default function CompanyFormPage() {
       setError("Phone is required");
       return;
     }
-    if (!form.website.trim()) {
-      setError("Website is required");
-      return;
+
+    if (createAdmin) {
+      if (!adminForm.username.trim()) {
+        setError("Admin username is required");
+        return;
+      }
+      if (!adminForm.email.trim()) {
+        setError("Admin email is required");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminForm.email)) {
+        setError("Valid admin email is required");
+        return;
+      }
+      if (!adminForm.password) {
+        setError("Admin password is required");
+        return;
+      }
+      if (adminForm.password.length < 8) {
+        setError("Admin password must be at least 8 characters");
+        return;
+      }
+      if (adminForm.password !== adminForm.confirmPassword) {
+        setError("Admin passwords do not match");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -96,6 +133,16 @@ export default function CompanyFormPage() {
       Object.keys(payload).forEach((key) => {
         if (payload[key] === "") delete payload[key];
       });
+
+      if (createAdmin) {
+        payload.initialAdmin = {
+          username: adminForm.username,
+          adminName: adminForm.adminName,
+          email: adminForm.email,
+          password: adminForm.password,
+          confirmPassword: adminForm.confirmPassword,
+        };
+      }
 
       const res = await companyApi.create(payload);
       if (res.data.success) {
@@ -109,7 +156,7 @@ export default function CompanyFormPage() {
           }
         }
 
-        toast({ title: "Company created", description: `${form.name} has been created.` });
+        toast({ title: "Company created", description: `${form.name} has been created.${createAdmin ? " Initial admin account created." : ""}` });
         router.push(`/admin/companies/${companyId}`);
       } else {
         setError(res.data.error || "Failed to create company");
@@ -121,12 +168,12 @@ export default function CompanyFormPage() {
     }
   };
 
-  if (!isSuperAdmin && !isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <AlertCircle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold">Access Denied</h2>
-        <p className="text-muted-foreground mt-2">Admin access required.</p>
+        <p className="text-muted-foreground mt-2">Super Admin access required.</p>
       </div>
     );
   }
@@ -251,14 +298,13 @@ export default function CompanyFormPage() {
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-medium">Website <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">Website</label>
               <input
                 type="url"
                 value={form.website}
                 onChange={(e) => handleChange("website", e.target.value)}
                 placeholder="https://acme.com"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                required
               />
             </div>
           </CardContent>
@@ -357,6 +403,117 @@ export default function CompanyFormPage() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Company Lifecycle</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <input
+                type="date"
+                value={form.companyStartDate}
+                onChange={(e) => handleChange("companyStartDate", e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Date from which the company becomes active. Leave empty for immediate activation.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Expiry Date</label>
+              <input
+                type="date"
+                value={form.companyExpiryDate}
+                onChange={(e) => handleChange("companyExpiryDate", e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Date until which the company is active. Leave empty for no expiry.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Initial Admin Account
+            </CardTitle>
+            <Button
+              type="button"
+              variant={createAdmin ? "destructive" : "outline"}
+              size="sm"
+              onClick={() => setCreateAdmin(!createAdmin)}
+            >
+              {createAdmin ? "Skip Admin" : "Create Admin"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {!createAdmin ? (
+              <p className="text-sm text-muted-foreground">
+                Optionally create the first Admin account for this company during creation. You can also create users later.
+              </p>
+            ) : (
+              <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Username <span className="text-destructive">*</span></label>
+                    <input
+                      type="text"
+                      value={adminForm.username}
+                      onChange={(e) => handleAdminChange("username", e.target.value)}
+                      placeholder="admin_username"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Admin Name</label>
+                    <input
+                      type="text"
+                      value={adminForm.adminName}
+                      onChange={(e) => handleAdminChange("adminName", e.target.value)}
+                      placeholder="John Smith"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium">Admin Email <span className="text-destructive">*</span></label>
+                    <input
+                      type="email"
+                      value={adminForm.email}
+                      onChange={(e) => handleAdminChange("email", e.target.value)}
+                      placeholder="admin@company.com"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Password <span className="text-destructive">*</span></label>
+                    <input
+                      type="password"
+                      value={adminForm.password}
+                      onChange={(e) => handleAdminChange("password", e.target.value)}
+                      placeholder="Min 8 characters"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Confirm Password <span className="text-destructive">*</span></label>
+                    <input
+                      type="password"
+                      value={adminForm.confirmPassword}
+                      onChange={(e) => handleAdminChange("confirmPassword", e.target.value)}
+                      placeholder="Confirm password"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5" />
+                  The admin will be linked to this company and receive the Admin profile. Password is hashed server-side.
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

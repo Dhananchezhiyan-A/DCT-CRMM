@@ -350,3 +350,48 @@ export async function applyFieldDefaults(fieldDefs: any[], data: Record<string, 
   }
   return result;
 }
+
+export async function getRoleHierarchyUserIds(tenantId: string, userId: string) {
+  const [user, roles] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { roleId: true, roles: { select: { roleId: true } } },
+    }),
+    prisma.role.findMany({
+      where: { tenantId },
+      select: { id: true, parentRoleId: true },
+    }),
+  ]);
+
+  if (!user) return [];
+
+  const visibleRoleIds = new Set([
+    ...(user.roleId ? [user.roleId] : []),
+    ...user.roles.map((role) => role.roleId),
+  ]);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const role of roles) {
+      if (role.parentRoleId && visibleRoleIds.has(role.parentRoleId) && !visibleRoleIds.has(role.id)) {
+        visibleRoleIds.add(role.id);
+        changed = true;
+      }
+    }
+  }
+
+  const visibleUsers = await prisma.user.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { id: userId },
+        { roleId: { in: [...visibleRoleIds] } },
+        { roles: { some: { roleId: { in: [...visibleRoleIds] } } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  return visibleUsers.map((visibleUser) => visibleUser.id);
+}

@@ -45,7 +45,7 @@ export const leadSchema = z.object({
   annualRevenue: z.number().optional(),
   numberOfEmployees: z.number().optional(),
   source: z.enum(['WEBSITE', 'REFERRAL', 'COLD_CALL', 'ADVERTISEMENT', 'WALK_IN', 'PORTAL', 'INSTAGRAM', 'TWITTER', 'WHATSAPP', 'YOUTUBE', 'OTHER']).default('OTHER'),
-  status: z.enum(['NEW', 'INCOMING', 'PROSPECT', 'SITE_VISIT_SCHEDULED', 'SITE_VISIT_HAPPENED', 'SALES', 'OPPORTUNITY', 'QUOTATION', 'APPROVAL', 'BOOKING', 'DUPLICATE', 'LOST', 'BOOKED']).optional(),
+  status: z.enum(['NEW', 'INCOMING', 'PROSPECT', 'SITE_VISIT_SCHEDULED', 'SITE_VISIT_HAPPENED', 'BOOKED', 'LOST']).optional(),
   rating: z.enum(['HOT', 'WARM', 'COLD']).optional(),
   description: z.string().optional(),
   street: z.string().optional(),
@@ -97,10 +97,10 @@ export const customerSchema = z.object({
 
 export const siteVisitSchema = z.object({
   leadId: z.string().min(1),
-  projectId: z.string().optional(),
+  projectId: z.string().min(1, 'Project is required'),
   assigneeId: z.string().optional(),
   scheduledAt: z.string().datetime(),
-  notes: z.string().optional(),
+  notes: z.string().min(1, 'Note/reason is required'),
 });
 
 export const opportunitySchema = z.object({
@@ -174,26 +174,26 @@ export const unitSchema = z.object({
 });
 
 export const taskSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
+  title: z.string().min(1, 'Title/Description is required'),
+  description: z.string().min(1, 'Description is required'),
   status: z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).default('PENDING'),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
-  dueDate: z.string().optional(),
+  dueDate: z.string().min(1, 'Due date is required'),
   leadId: z.string().optional(),
   siteVisitId: z.string().optional(),
   opportunityId: z.string().optional(),
 });
 
 export const followUpSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
-  dueDate: z.string().min(1),
+  title: z.string().min(1, 'Title/Note is required'),
+  description: z.string().min(1, 'Description/Note is required'),
+  dueDate: z.string().min(1, 'Due date is required'),
   leadId: z.string().optional(),
 });
 
 export const activitySchema = z.object({
   type: z.enum(['CALL', 'MEETING', 'WHATSAPP', 'EMAIL', 'SITE_VISIT', 'NOTE', 'TASK', 'FOLLOW_UP', 'SYSTEM']),
-  subject: z.string().min(1),
+  subject: z.string().min(1, 'Subject is required'),
   description: z.string().optional(),
   dueDate: z.string().optional(),
   leadId: z.string().optional(),

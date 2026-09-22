@@ -10,13 +10,13 @@ const router = Router();
 router.use(authenticate);
 
 const siteVisitSchema = z.object({
-  leadId: z.string(),
-  projectId: z.string().optional(),
+  leadId: z.string().min(1, 'Lead ID is required'),
+  projectId: z.string().min(1, 'Project is required'),
   assigneeId: z.string().optional(),
   queueId: z.string().optional(),
   scheduledAt: z.string().datetime(),
   status: z.enum(['SCHEDULED', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED']).optional(),
-  notes: z.string().max(2000).optional(),
+  notes: z.string().min(1, 'Note/reason is required').max(2000),
   feedback: z.string().max(1000).optional(),
   rating: z.number().int().min(1).max(5).optional(),
 });
@@ -190,26 +190,51 @@ router.patch('/:id/complete', authorize('SiteVisit', 'edit'), async (req: AuthRe
 
     const existing = await prisma.siteVisit.findFirst({
       where: { id: req.params.id, tenantId },
+      include: { lead: true },
     });
 
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Site visit not found' });
     }
 
-    const siteVisit = await prisma.siteVisit.update({
-      where: { id: req.params.id },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        feedback,
-        rating,
-        notes,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const siteVisit = await tx.siteVisit.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          feedback,
+          rating,
+          notes,
+        },
+      });
+
+      if (existing.lead && existing.lead.status === 'SITE_VISIT_SCHEDULED') {
+        await tx.lead.update({
+          where: { id: existing.leadId },
+          data: { status: 'SITE_VISIT_HAPPENED' },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            leadId: existing.leadId,
+            action: 'SITE_VISIT_HAPPENED',
+            objectType: 'Lead',
+            objectId: existing.leadId,
+            oldValues: { status: 'SITE_VISIT_SCHEDULED' },
+            newValues: { status: 'SITE_VISIT_HAPPENED', siteVisitId: existing.id },
+          },
+        });
+      }
+
+      await auditLog(tenantId, userId, 'UPDATE', 'SiteVisit', siteVisit.id, existing, { status: 'COMPLETED', feedback, rating });
+
+      return siteVisit;
     });
 
-    await auditLog(tenantId, userId, 'UPDATE', 'SiteVisit', siteVisit.id, existing, { status: 'COMPLETED', feedback, rating });
-
-    res.json({ success: true, data: siteVisit });
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error('Complete site visit error:', error);
     res.status(500).json({ success: false, error: 'Failed to complete site visit' });

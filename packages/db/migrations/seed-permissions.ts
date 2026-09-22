@@ -117,6 +117,12 @@ const PERMISSIONS = [
   { name: 'USER_DEACTIVATE', label: 'Deactivate User', module: 'USER', action: 'DEACTIVATE' },
   { name: 'USER_PASSWORD_RESET', label: 'Reset User Password', module: 'USER', action: 'PASSWORD_RESET' },
 
+  // ROLE
+  { name: 'ROLE_READ', label: 'View Roles', module: 'ROLE', action: 'READ' },
+  { name: 'ROLE_CREATE', label: 'Create Role', module: 'ROLE', action: 'CREATE' },
+  { name: 'ROLE_UPDATE', label: 'Update Role', module: 'ROLE', action: 'UPDATE' },
+  { name: 'ROLE_DELETE', label: 'Delete Role', module: 'ROLE', action: 'DELETE' },
+
   // PROFILE
   { name: 'PROFILE_READ', label: 'View Profiles', module: 'PROFILE', action: 'READ' },
   { name: 'PROFILE_CREATE', label: 'Create Profile', module: 'PROFILE', action: 'CREATE' },

@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { prisma } from '@dct-crm/db';
 import { AuthRequest } from './auth';
+import { EffectivePermissionService } from '../services/effectivePermissions';
 
 export interface Permission {
   create?: boolean;
@@ -50,6 +51,12 @@ export const authorize = (objectName: string, requiredPermission: keyof Permissi
           }
         }
         if (hasPermission) break;
+      }
+
+      if (!hasPermission) {
+        const moduleName = objectName === 'AuditLog' ? 'AUDIT' : objectName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+        const actionName = requiredPermission === 'edit' ? 'UPDATE' : requiredPermission.toUpperCase();
+        hasPermission = await EffectivePermissionService.hasPermission(req.user.id, `${moduleName}_${actionName}`);
       }
 
       if (!hasPermission) {

@@ -14,7 +14,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const user = await prisma.user.findFirst({
       where: { email, isActive: true },
       include: {
-        tenant: { select: { id: true, name: true, slug: true, isActive: true } },
+        tenant: { select: { id: true, name: true, slug: true, isActive: true, companyStartDate: true, companyExpiryDate: true } },
         profile: { select: { id: true, name: true, description: true, leadStatusAccess: true } },
         roles: {
           include: {
@@ -35,7 +35,17 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     if (!user.tenant.isActive) {
-      return res.status(403).json({ success: false, error: 'Tenant is inactive' });
+      return res.status(403).json({ success: false, error: 'Company is inactive. Contact Super Admin.' });
+    }
+
+    if (!user.isSuperAdmin) {
+      const now = new Date();
+      if (user.tenant.companyStartDate && now < user.tenant.companyStartDate) {
+        return res.status(403).json({ success: false, error: 'Company has not started yet. Access begins on ' + user.tenant.companyStartDate.toLocaleDateString() + '.' });
+      }
+      if (user.tenant.companyExpiryDate && now > user.tenant.companyExpiryDate) {
+        return res.status(403).json({ success: false, error: 'Company subscription has expired. Contact Super Admin.' });
+      }
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
@@ -76,9 +86,18 @@ router.post('/login', async (req: Request, res: Response) => {
       }
     }
 
+    let companyLifecycleStatus = 'active';
+    if (user.tenant) {
+      const now = new Date();
+      if (!user.tenant.isActive) companyLifecycleStatus = 'deactivated';
+      else if (user.tenant.companyStartDate && now < user.tenant.companyStartDate) companyLifecycleStatus = 'pending';
+      else if (user.tenant.companyExpiryDate && now > user.tenant.companyExpiryDate) companyLifecycleStatus = 'expired';
+    }
+
     res.json({
       success: true,
       data: {
+        token,
         user: {
           id: user.id,
           email: user.email,
@@ -88,7 +107,10 @@ router.post('/login', async (req: Request, res: Response) => {
           isSuperAdmin: user.isSuperAdmin,
         },
         profile: user.profile,
-        tenant: user.tenant,
+        tenant: {
+          ...user.tenant,
+          companyLifecycleStatus,
+        },
         roles: user.roles.map((ur) => ur.role.name),
         permissions: legacyPermissions,
         effectivePermissions: effectivePerms.map((p) => p.name),
@@ -110,6 +132,28 @@ router.post('/logout', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
+router.post('/stop-impersonation', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user?.impersonatedBy) {
+      return res.status(400).json({ success: false, error: 'You are not impersonating another user' });
+    }
+
+    const admin = await prisma.user.findFirst({
+      where: { id: req.user.impersonatedBy, tenantId: req.tenantId!, isActive: true },
+      select: { id: true, email: true, tenantId: true, isSuperAdmin: true },
+    });
+    if (!admin) {
+      return res.status(401).json({ success: false, error: 'Original administrator session is unavailable' });
+    }
+
+    setAuthCookie(res, generateToken(admin));
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Stop impersonation error:', error);
+    res.status(500).json({ success: false, error: 'Failed to return to administrator' });
+  }
+});
+
 router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
@@ -122,7 +166,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
         phone: true,
         avatar: true,
         isSuperAdmin: true,
-        tenant: { select: { id: true, name: true, slug: true } },
+        tenant: { select: { id: true, name: true, slug: true, logo: true, companyStartDate: true, companyExpiryDate: true, isActive: true } },
         profile: { select: { id: true, name: true, description: true, leadStatusAccess: true } },
         roles: {
           include: {
@@ -161,6 +205,14 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    let companyLifecycleStatus = 'active';
+    if (user.tenant) {
+      const now = new Date();
+      if (!user.tenant.isActive) companyLifecycleStatus = 'deactivated';
+      else if (user.tenant.companyStartDate && now < user.tenant.companyStartDate) companyLifecycleStatus = 'pending';
+      else if (user.tenant.companyExpiryDate && now > user.tenant.companyExpiryDate) companyLifecycleStatus = 'expired';
+    }
+
     res.json({
       success: true,
       data: {
@@ -172,9 +224,13 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
           phone: user.phone,
           avatar: user.avatar,
           isSuperAdmin: user.isSuperAdmin,
+          impersonatedBy: req.user?.impersonatedBy || null,
         },
         profile: user.profile,
-        tenant: user.tenant,
+        tenant: user.tenant ? {
+          ...user.tenant,
+          companyLifecycleStatus,
+        } : null,
         roles: user.roles.map((ur) => ur.role.name),
         permissions: legacyPermissions,
         effectivePermissions: effectivePerms.map((p) => p.name),

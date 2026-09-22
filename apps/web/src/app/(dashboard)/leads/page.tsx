@@ -24,14 +24,8 @@ const STATUS_LABELS: Record<string, string> = {
   PROSPECT: "Prospect",
   SITE_VISIT_SCHEDULED: "Site Visit Scheduled",
   SITE_VISIT_HAPPENED: "Site Visit Happened",
-  SALES: "Sales",
-  OPPORTUNITY: "Opportunity",
-  QUOTATION: "Quotation",
-  APPROVAL: "Approval",
-  BOOKING: "Booking",
-  DUPLICATE: "Duplicate",
-  LOST: "Lost",
   BOOKED: "Booked",
+  LOST: "Lost",
 };
 
 const ALL_STATUSES = Object.keys(STATUS_LABELS);
@@ -55,6 +49,7 @@ function mapApiLeadToLead(apiLead: any): Lead {
   const statusLower = (apiLead.status || "NEW").toLowerCase();
   return {
     id: apiLead.id,
+    leadNumber: apiLead.leadNumber || "",
     firstName: apiLead.firstName || "",
     lastName: apiLead.lastName || "",
     company: apiLead.company || "",

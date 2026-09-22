@@ -20,28 +20,33 @@ async function main() {
     console.log('Created platform tenant');
   }
 
-  // Check if Super Admin already exists
-  const existingSuperAdmin = await prisma.user.findFirst({
-    where: { email: 'superadmin@dctcrm.com' },
-  });
-
-  if (!existingSuperAdmin) {
-    const superAdmin = await prisma.user.create({
-      data: {
+  const superAdmin = await prisma.user.upsert({
+    where: {
+      tenantId_email: {
         tenantId: platformTenant.id,
         email: 'superadmin@dctcrm.com',
-        passwordHash,
-        firstName: 'Super',
-        lastName: 'Admin',
-        isSuperAdmin: true,
-        isActive: true,
       },
-    });
-    console.log(`Created Super Admin user: ${superAdmin.email} (ID: ${superAdmin.id})`);
-    console.log('Login credentials: superadmin@dctcrm.com / password123');
-  } else {
-    console.log('Super Admin user already exists');
-  }
+    },
+    update: {
+      passwordHash,
+      firstName: 'Super',
+      lastName: 'Admin',
+      isSuperAdmin: true,
+      isActive: true,
+    },
+    create: {
+      tenantId: platformTenant.id,
+      email: 'superadmin@dctcrm.com',
+      passwordHash,
+      firstName: 'Super',
+      lastName: 'Admin',
+      isSuperAdmin: true,
+      isActive: true,
+    },
+  });
+
+  console.log(`Super Admin ready: ${superAdmin.email} (ID: ${superAdmin.id})`);
+  console.log('Login credentials: superadmin@dctcrm.com / password123');
 }
 
 main()

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { newPermissionSetApi, permissionApi, userApi } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Card,
@@ -106,9 +107,19 @@ interface UserAssignment {
   userId: string;
   user?: {
     id: string;
-    name: string;
+    firstName: string;
+    lastName: string;
     email: string;
+    isActive: boolean;
   };
+}
+
+interface AssignableUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  isActive: boolean;
 }
 
 interface PermissionSet {
@@ -139,6 +150,7 @@ interface PermissionByModule {
 
 export default function PermissionSetsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const [permissionSets, setPermissionSets] = useState<PermissionSet[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -171,6 +183,10 @@ export default function PermissionSetsPage() {
 
   const [viewDetails, setViewDetails] = useState<PermissionSet | null>(null);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
 
   const fetchPermissionSets = useCallback(async (page = 1, search = "", status = "all") => {
     try {
@@ -194,7 +210,13 @@ export default function PermissionSetsPage() {
   const fetchPermissions = useCallback(async () => {
     try {
       const response = await permissionApi.list();
-      setPermissionsByModule((response.data as any).byModule || {});
+      const permissions = Array.isArray(response.data.data) ? response.data.data : [];
+      const grouped = permissions.reduce<PermissionByModule>((modules, permission: Permission) => {
+        if (!modules[permission.module]) modules[permission.module] = [];
+        modules[permission.module].push(permission);
+        return modules;
+      }, {});
+      setPermissionsByModule(grouped);
     } catch (error) {
       console.error("Failed to fetch permissions:", error);
     }
@@ -245,11 +267,47 @@ export default function PermissionSetsPage() {
   const openViewDialog = async (ps: PermissionSet) => {
     setSelectedPermissionSet(ps);
     setViewDialogOpen(true);
+    setAssignmentLoading(true);
     try {
-      const response = await newPermissionSetApi.get(ps.id);
-      setViewDetails(response.data.data);
-    } catch (error) {
+      const [permissionSetResponse, usersResponse] = await Promise.all([
+        newPermissionSetApi.get(ps.id),
+        userApi.list({ limit: 200 }),
+      ]);
+      const details = permissionSetResponse.data.data;
+      const users = Array.isArray(usersResponse.data.data) ? usersResponse.data.data : [];
+      setViewDetails(details);
+      setAssignableUsers(users);
+      setSelectedUserIds((details.userAssignments || []).map((assignment: UserAssignment) => assignment.userId));
+    } catch (error: any) {
       console.error("Failed to load permission set details:", error);
+      toast({ title: "Unable to load assignments", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  const saveAssignments = async () => {
+    if (!selectedPermissionSet || !viewDetails) return;
+
+    const existingUserIds = (viewDetails.userAssignments || []).map((assignment) => assignment.userId);
+    const usersToAssign = selectedUserIds.filter((userId) => !existingUserIds.includes(userId));
+    const usersToUnassign = existingUserIds.filter((userId) => !selectedUserIds.includes(userId));
+
+    try {
+      setAssignmentSaving(true);
+      if (usersToAssign.length > 0) {
+        await newPermissionSetApi.assign(selectedPermissionSet.id, usersToAssign);
+      }
+      await Promise.all(usersToUnassign.map((userId) => newPermissionSetApi.unassign(selectedPermissionSet.id, userId)));
+      const response = await newPermissionSetApi.get(selectedPermissionSet.id);
+      setViewDetails(response.data.data);
+      setSelectedUserIds((response.data.data.userAssignments || []).map((assignment: UserAssignment) => assignment.userId));
+      fetchPermissionSets(pagination.page, searchQuery, statusFilter);
+      toast({ title: "Assignments saved", description: "Permission set access was updated." });
+    } catch (error: any) {
+      toast({ title: "Assignment save failed", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
+    } finally {
+      setAssignmentSaving(false);
     }
   };
 
@@ -259,7 +317,14 @@ export default function PermissionSetsPage() {
   };
 
   const handleCreate = async () => {
-    if (!formData.name.trim()) return;
+    if (!formData.name.trim()) {
+      toast({ title: "Name required", description: "Enter a permission set name.", variant: "destructive" as any });
+      return;
+    }
+    if (formData.permissionIds.length === 0) {
+      toast({ title: "Permission required", description: "Select at least one permission before creating the set.", variant: "destructive" as any });
+      return;
+    }
     try {
       setSubmitting(true);
       await newPermissionSetApi.create({
@@ -269,15 +334,23 @@ export default function PermissionSetsPage() {
       });
       setCreateDialogOpen(false);
       fetchPermissionSets(pagination.page, searchQuery, statusFilter);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create permission set:", error);
+      toast({ title: "Create failed", description: error?.response?.data?.error || "Unable to create permission set.", variant: "destructive" as any });
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleEdit = async () => {
-    if (!selectedPermissionSet || !formData.name.trim()) return;
+    if (!selectedPermissionSet || !formData.name.trim()) {
+      toast({ title: "Name required", description: "Enter a permission set name.", variant: "destructive" as any });
+      return;
+    }
+    if (formData.permissionIds.length === 0) {
+      toast({ title: "Permission required", description: "Select at least one permission before saving the set.", variant: "destructive" as any });
+      return;
+    }
     try {
       setSubmitting(true);
       await newPermissionSetApi.update(selectedPermissionSet.id, {
@@ -288,8 +361,9 @@ export default function PermissionSetsPage() {
       });
       setEditDialogOpen(false);
       fetchPermissionSets(pagination.page, searchQuery, statusFilter);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update permission set:", error);
+      toast({ title: "Update failed", description: error?.response?.data?.error || "Unable to update permission set.", variant: "destructive" as any });
     } finally {
       setSubmitting(false);
     }
@@ -302,8 +376,9 @@ export default function PermissionSetsPage() {
       await newPermissionSetApi.delete(selectedPermissionSet.id);
       setDeleteDialogOpen(false);
       fetchPermissionSets(pagination.page, searchQuery, statusFilter);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete permission set:", error);
+      toast({ title: "Delete failed", description: error?.response?.data?.error || "Unable to delete permission set.", variant: "destructive" as any });
     } finally {
       setSubmitting(false);
     }
@@ -533,7 +608,7 @@ export default function PermissionSetsPage() {
       </Card>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] min-h-0 overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Permission Set</DialogTitle>
             <DialogDescription>
@@ -541,7 +616,7 @@ export default function PermissionSetsPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
-          <ScrollArea className="flex-1 max-h-[60vh] pr-4">
+          <ScrollArea className="h-[60vh] max-h-[60vh] min-h-0 flex-none pr-4">
             <div className="space-y-6 py-4">
               <div className="space-y-2">
                 <Label htmlFor="create-name">Name *</Label>
@@ -618,12 +693,13 @@ export default function PermissionSetsPage() {
                             {modulePermissions.map((permission) => (
                               <div key={permission.id} className="flex items-center gap-2">
                                 <Checkbox
+                                  id={`create-permission-${permission.id}`}
                                   checked={formData.permissionIds.includes(permission.id)}
                                   onCheckedChange={(checked) =>
                                     togglePermission(permission.id, !!checked)
                                   }
                                 />
-                                <Label className="text-sm font-normal cursor-pointer">
+                                <Label htmlFor={`create-permission-${permission.id}`} className="text-sm font-normal cursor-pointer">
                                   {permission.label || permission.name}
                                 </Label>
                               </div>
@@ -643,7 +719,7 @@ export default function PermissionSetsPage() {
             </Button>
             <Button
               type="submit"
-              disabled={!formData.name.trim() || submitting}
+              disabled={!formData.name.trim() || formData.permissionIds.length === 0 || submitting}
             >
               {submitting ? "Creating..." : "Create Permission Set"}
             </Button>
@@ -653,7 +729,7 @@ export default function PermissionSetsPage() {
       </Dialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] min-h-0 overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit Permission Set</DialogTitle>
             <DialogDescription>
@@ -665,7 +741,7 @@ export default function PermissionSetsPage() {
             <div className="py-12 text-center text-muted-foreground">Loading...</div>
           ) : (
             <>
-              <ScrollArea className="flex-1 max-h-[60vh] pr-4">
+              <ScrollArea className="h-[60vh] max-h-[60vh] min-h-0 flex-none pr-4">
                 <div className="space-y-6 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-name">Name *</Label>
@@ -746,12 +822,13 @@ export default function PermissionSetsPage() {
                                 {modulePermissions.map((permission) => (
                                   <div key={permission.id} className="flex items-center gap-2">
                                     <Checkbox
+                                      id={`edit-permission-${permission.id}`}
                                       checked={formData.permissionIds.includes(permission.id)}
                                       onCheckedChange={(checked) =>
                                         togglePermission(permission.id, !!checked)
                                       }
                                     />
-                                    <Label className="text-sm font-normal cursor-pointer">
+                                    <Label htmlFor={`edit-permission-${permission.id}`} className="text-sm font-normal cursor-pointer">
                                       {permission.label || permission.name}
                                     </Label>
                                   </div>
@@ -771,7 +848,7 @@ export default function PermissionSetsPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!formData.name.trim() || submitting}
+                  disabled={!formData.name.trim() || formData.permissionIds.length === 0 || submitting}
                 >
                   {submitting ? "Updating..." : "Update Permission Set"}
                 </Button>
@@ -783,14 +860,14 @@ export default function PermissionSetsPage() {
       </Dialog>
 
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] min-h-0 overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Permission Set Details</DialogTitle>
             <DialogDescription>
               View the complete details of this permission set.
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 max-h-[60vh] pr-4">
+          <ScrollArea className="h-[60vh] max-h-[60vh] min-h-0 flex-none pr-4">
             {viewDetails ? (
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -848,33 +925,28 @@ export default function PermissionSetsPage() {
 
                 <div className="space-y-3">
                   <Label className="text-base font-semibold">
-                    Assigned Users ({viewDetails.userAssignments?.length || 0})
+                    Assigned Users ({selectedUserIds.length})
                   </Label>
-                  {viewDetails.userAssignments && viewDetails.userAssignments.length > 0 ? (
+                  {assignmentLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading users...</p>
+                  ) : assignableUsers.length > 0 ? (
                     <div className="space-y-2">
-                      {viewDetails.userAssignments.map((assignment) => (
-                        <div
-                          key={assignment.id}
-                          className="flex items-center gap-3 p-3 border rounded-lg"
-                        >
-                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Users className="h-4 w-4 text-primary" />
-                          </div>
+                      {assignableUsers.map((assignableUser) => (
+                        <label key={assignableUser.id} className="flex items-center gap-3 rounded-lg border p-3">
+                          <Checkbox
+                            checked={selectedUserIds.includes(assignableUser.id)}
+                            onCheckedChange={(checked) => setSelectedUserIds((current) => checked ? [...new Set([...current, assignableUser.id])] : current.filter((id) => id !== assignableUser.id))}
+                          />
                           <div>
-                            <p className="font-medium text-sm">
-                              {assignment.user?.name || "Unknown User"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {assignment.user?.email || "No email"}
-                            </p>
+                            <p className="font-medium text-sm">{assignableUser.firstName} {assignableUser.lastName}</p>
+                            <p className="text-xs text-muted-foreground">{assignableUser.email}</p>
                           </div>
-                        </div>
+                          {!assignableUser.isActive && <Badge variant="secondary">Inactive</Badge>}
+                        </label>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No users assigned to this permission set
-                    </p>
+                    <p className="text-sm text-muted-foreground">No users available to assign.</p>
                   )}
                 </div>
               </div>
@@ -883,6 +955,9 @@ export default function PermissionSetsPage() {
             )}
           </ScrollArea>
           <DialogFooter>
+            <Button onClick={saveAssignments} disabled={assignmentLoading || assignmentSaving || !viewDetails}>
+              {assignmentSaving ? "Saving assignments..." : "Save assignments"}
+            </Button>
             <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
               Close
             </Button>

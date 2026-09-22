@@ -45,6 +45,7 @@ export const authApi = {
     api.post<ApiResponse>('/api/auth/login', { email, password }),
   logout: () => api.post<ApiResponse>('/api/auth/logout'),
   me: () => api.get<ApiResponse>('/api/auth/me'),
+  stopImpersonation: () => api.post<ApiResponse>('/api/auth/stop-impersonation'),
 };
 
 // Lead API
@@ -59,12 +60,20 @@ export const leadApi = {
     api.put<ApiResponse>(`/api/leads/${id}`, data),
   delete: (id: string) =>
     api.delete<ApiResponse>(`/api/leads/${id}`),
-  updateStatus: (id: string, status: string) =>
-    api.put<ApiResponse>(`/api/leads/${id}/status`, { status }),
+  updateStatus: (id: string, status: string, note: string) =>
+    api.put<ApiResponse>(`/api/leads/${id}/status`, { status, note }),
   recovery: (id: string, data: { recoveryReason: string; note?: string }) =>
-    api.post<ApiResponse>(`/api/leads/${id}/recovery`, data),
+    api.post<ApiResponse>(`/api/leads/${id}/move-to-recovery`, data),
   assign: (id: string, ownerId: string) =>
     api.put<ApiResponse>(`/api/leads/${id}/assign`, { ownerId }),
+  pushToSVC: (id: string, data: { reason: string }) =>
+    api.post<ApiResponse>(`/api/leads/${id}/push-to-svc`, data),
+  moveToRecovery: (id: string, data: { recoveryReason: string; note?: string }) =>
+    api.post<ApiResponse>(`/api/leads/${id}/move-to-recovery`, data),
+  scheduleSiteVisit: (id: string, data: { scheduledAt: string; notes: string; projectId?: string }) =>
+    api.post<ApiResponse>(`/api/leads/${id}/schedule-site-visit`, data),
+  getOwnerHistory: (id: string) =>
+    api.get<ApiResponse>(`/api/leads/${id}/owner-history`),
 };
 
 // Contact API
@@ -350,17 +359,44 @@ export const aiApi = {
 // User API
 export const userApi = {
   list: (params?: Record<string, any>) =>
-    api.get<ApiResponse>('/api/users', { params }),
+    api.get<ApiResponse>('/api/setup/users', { params }),
   get: (id: string) =>
-    api.get<ApiResponse>(`/api/users/${id}`),
-  create: (data: any) =>
-    api.post<ApiResponse>('/api/users', data),
-  update: (id: string, data: any) =>
-    api.put<ApiResponse>(`/api/users/${id}`, data),
+    api.get<ApiResponse>(`/api/setup/users/${id}`),
+  create: (data: {
+    email: string;
+    firstName: string;
+    lastName?: string;
+    phone?: string;
+    profileId?: string;
+    roleId?: string | null;
+    roleIds?: string[];
+    password?: string;
+    isActive?: boolean;
+  }) =>
+    api.post<ApiResponse>('/api/setup/users', data),
+  update: (
+    id: string,
+    data: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      profileId?: string | null;
+      roleId?: string | null;
+      roleIds?: string[];
+      isActive?: boolean;
+    }
+  ) =>
+    api.put<ApiResponse>(`/api/setup/users/${id}`, data),
+  assignRoles: (id: string, roleIds: string[]) =>
+    api.put<ApiResponse>(`/api/setup/users/${id}/roles`, { roleIds }),
   deactivate: (id: string) =>
-    api.put<ApiResponse>(`/api/users/${id}/deactivate`),
+    api.put<ApiResponse>(`/api/setup/users/${id}/deactivate`),
   activate: (id: string) =>
-    api.put<ApiResponse>(`/api/users/${id}/activate`),
+    api.put<ApiResponse>(`/api/setup/users/${id}/activate`),
+  resetPassword: (id: string, password: string) =>
+    api.put<ApiResponse>(`/api/setup/users/${id}/password`, { password }),
+  impersonate: (id: string) =>
+    api.post<ApiResponse>(`/api/setup/users/${id}/impersonate`),
 };
 
 // Role API
@@ -443,15 +479,15 @@ export const objectManagerApi = {
     api.delete<ApiResponse>(`/api/picklist-values/${fieldId}/${valueId}`),
 
   listLayouts: (objectName: string) =>
-    api.get<ApiResponse>(`/api/layouts/${objectName}`),
+    api.get<ApiResponse>(`/api/setup/layouts/${objectName}`),
   getDefaultLayout: (objectName: string) =>
-    api.get<ApiResponse>(`/api/layouts/${objectName}/default`),
+    api.get<ApiResponse>(`/api/setup/layouts/${objectName}/default`),
   createLayout: (objectName: string, data: any) =>
-    api.post<ApiResponse>(`/api/layouts/${objectName}`, data),
+    api.post<ApiResponse>(`/api/setup/layouts/${objectName}`, data),
   updateLayout: (objectName: string, layoutId: string, data: any) =>
-    api.put<ApiResponse>(`/api/layouts/${objectName}/${layoutId}`, data),
+    api.put<ApiResponse>(`/api/setup/layouts/${objectName}/${layoutId}`, data),
   deleteLayout: (objectName: string, layoutId: string) =>
-    api.delete<ApiResponse>(`/api/layouts/${objectName}/${layoutId}`),
+    api.delete<ApiResponse>(`/api/setup/layouts/${objectName}/${layoutId}`),
 
   getObjectPermissions: (objectName: string) =>
     api.get<ApiResponse>(`/api/object-permissions/${objectName}`),
@@ -470,6 +506,24 @@ export const objectManagerApi = {
     api.post<ApiResponse>(`/api/field-permissions/${objectName}/bulk`, { permissions }),
   deleteFieldPermission: (objectName: string, permissionId: string) =>
     api.delete<ApiResponse>(`/api/field-permissions/${objectName}/${permissionId}`),
+};
+
+// Modules API
+export const modulesApi = {
+  list: (includeInactive = true) =>
+    api.get<ApiResponse>('/api/setup/modules', { params: { includeInactive } }),
+  create: (data: any) => api.post<ApiResponse>('/api/setup/modules', data),
+  update: (name: string, data: any) => api.put<ApiResponse>(`/api/setup/modules/${name}`, data),
+  delete: (name: string) => api.delete<ApiResponse>(`/api/setup/modules/${name}`),
+};
+
+// Fields API
+export const fieldsApi = {
+  list: (moduleName: string, includeInactive = true) =>
+    api.get<ApiResponse>(`/api/setup/fields/${moduleName}`, { params: { includeInactive } }),
+  create: (moduleName: string, data: any) => api.post<ApiResponse>(`/api/setup/fields/${moduleName}`, data),
+  update: (moduleName: string, fieldId: string, data: any) => api.put<ApiResponse>(`/api/setup/fields/${moduleName}/${fieldId}`, data),
+  toggle: (moduleName: string, fieldId: string) => api.patch<ApiResponse>(`/api/setup/fields/${moduleName}/${fieldId}/toggle`),
 };
 
 // Dynamic Record API
@@ -544,6 +598,34 @@ export const userPermissionApi = {
     api.delete<ApiResponse>(`/api/user-permissions/${userId}/permission-sets/${permissionSetId}`),
 };
 
+// Permission Set Groups API
+export const permissionSetGroupApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<ApiResponse>('/api/permission-set-groups', { params }),
+  get: (id: string) =>
+    api.get<ApiResponse>(`/api/permission-set-groups/${id}`),
+  create: (data: any) =>
+    api.post<ApiResponse>('/api/permission-set-groups', data),
+  update: (id: string, data: any) =>
+    api.put<ApiResponse>(`/api/permission-set-groups/${id}`, data),
+  delete: (id: string) =>
+    api.delete<ApiResponse>(`/api/permission-set-groups/${id}`),
+  assignPermissionSets: (groupId: string, permissionSetIds: string[]) =>
+    api.post<ApiResponse>(`/api/permission-set-groups/${groupId}/permission-sets`, { permissionSetIds }),
+  removePermissionSet: (groupId: string, permissionSetId: string) =>
+    api.delete<ApiResponse>(`/api/permission-set-groups/${groupId}/permission-sets/${permissionSetId}`),
+};
+
+// User Permission Set Groups API
+export const userPermissionSetGroupApi = {
+  list: (userId: string) =>
+    api.get<ApiResponse>(`/api/user-permission-set-groups/${userId}`),
+  assign: (userId: string, groupIds: string[]) =>
+    api.post<ApiResponse>(`/api/user-permission-set-groups/${userId}`, { groupIds }),
+  unassign: (userId: string, groupId: string) =>
+    api.delete<ApiResponse>(`/api/user-permission-set-groups/${userId}/${groupId}`),
+};
+
 // Effective Permissions API
 export const effectivePermissionApi = {
   getMine: () =>
@@ -564,6 +646,24 @@ export const profilePermissionApi = {
     api.post<ApiResponse>(`/api/profile-permissions/${profileId}/permissions`, { permissionIds }),
   removePermission: (profileId: string, permissionId: string) =>
     api.delete<ApiResponse>(`/api/profile-permissions/${profileId}/permissions/${permissionId}`),
+};
+
+// Profile Security API
+export const profileSecurityApi = {
+  get: (profileId: string) => api.get<ApiResponse>(`/api/profile-security/${profileId}/security`),
+  update: (profileId: string, data: any) => api.put<ApiResponse>(`/api/profile-security/${profileId}/security`, data),
+};
+
+// Company Settings API
+export const companySettingsApi = {
+  get: () => api.get<ApiResponse>('/api/setup/company-settings'),
+  update: (data: any) => api.put<ApiResponse>('/api/setup/company-settings', data),
+};
+
+// Personal Settings API
+export const personalSettingsApi = {
+  get: () => api.get<ApiResponse>('/api/setup/personal-settings'),
+  update: (data: any) => api.put<ApiResponse>('/api/setup/personal-settings', data),
 };
 
 export default api;

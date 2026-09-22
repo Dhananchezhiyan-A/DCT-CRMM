@@ -6,6 +6,7 @@ import {
   generateRecordNumber,
   applyFieldDefaults,
   invalidateCache,
+  getRoleHierarchyUserIds,
 } from './metadata';
 
 interface ListOptions {
@@ -16,6 +17,7 @@ interface ListOptions {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   userId?: string;
+  ownerIds?: string[];
 }
 
 interface DynamicRecord {
@@ -50,6 +52,10 @@ export async function listRecords(tenantId: string, objectName: string, options:
     objectId: object.id,
     isActive: true,
   };
+
+  if (options.ownerIds) {
+    where.ownerId = { in: options.ownerIds };
+  }
 
   if (filters && Object.keys(filters).length > 0) {
     for (const [key, value] of Object.entries(filters)) {

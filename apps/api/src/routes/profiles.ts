@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { prisma } from '@dct-crm/db';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize } from '../middleware/authorization';
+import { requirePermission } from '../middleware/permissions';
 
 const router = Router();
 
@@ -16,6 +16,7 @@ const profileSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   isDefault: z.boolean().optional(),
+  isAdmin: z.boolean().optional(),
   permissionSetIds: z.array(z.string()).optional(),
   leadStatusAccess: leadStatusAccessSchema,
 });
@@ -89,7 +90,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/', authorize('Role', 'create'), async (req: AuthRequest, res: Response) => {
+router.post('/', requirePermission('PROFILE_CREATE'), async (req: AuthRequest, res: Response) => {
   try {
     const data = profileSchema.parse(req.body);
 
@@ -107,6 +108,7 @@ router.post('/', authorize('Role', 'create'), async (req: AuthRequest, res: Resp
         name: data.name,
         description: data.description,
         isDefault: data.isDefault ?? false,
+        isAdmin: data.isAdmin ?? false,
         leadStatusAccess: data.leadStatusAccess ?? undefined,
       },
     });
@@ -132,7 +134,7 @@ router.post('/', authorize('Role', 'create'), async (req: AuthRequest, res: Resp
   }
 });
 
-router.put('/:id', authorize('Role', 'edit'), async (req: AuthRequest, res: Response) => {
+router.put('/:id', requirePermission('PROFILE_UPDATE'), async (req: AuthRequest, res: Response) => {
   try {
     const existingProfile = await prisma.profile.findFirst({
       where: { id: req.params.id, tenantId: req.tenantId! },
@@ -192,7 +194,7 @@ router.put('/:id', authorize('Role', 'edit'), async (req: AuthRequest, res: Resp
   }
 });
 
-router.delete('/:id', authorize('Role', 'delete'), async (req: AuthRequest, res: Response) => {
+router.delete('/:id', requirePermission('PROFILE_DELETE'), async (req: AuthRequest, res: Response) => {
   try {
     const existingProfile = await prisma.profile.findFirst({
       where: { id: req.params.id, tenantId: req.tenantId! },

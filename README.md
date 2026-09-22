@@ -44,15 +44,15 @@ npm run dev
 
 ## Login Credentials
 
-| Email | Password | Role |
-|-------|----------|------|
-| superadmin@dctcrm.com | password123 | Super Admin |
-| admin@dctcrm.com | password123 | Admin |
-| salesmanager@dctcrm.com | password123 | Manager |
-| priya@dctcrm.com | password123 | Sales |
-| amit@dctcrm.com | password123 | Sales |
-| neha@dctcrm.com | password123 | Presales |
-| finance@dctcrm.com | password123 | Finance |
+| Email                   | Password    | Role        |
+| ----------------------- | ----------- | ----------- |
+| superadmin@dctcrm.com   | password123 | Super Admin |
+| admin@dctcrm.com        | password123 | Admin       |
+| salesmanager@dctcrm.com | password123 | Manager     |
+| priya@dctcrm.com        | password123 | Sales       |
+| amit@dctcrm.com         | password123 | Sales       |
+| neha@dctcrm.com         | password123 | Presales    |
+| finance@dctcrm.com      | password123 | Finance     |
 
 ## Project Structure
 

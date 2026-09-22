@@ -18,6 +18,7 @@ import {
 
 export interface Lead {
   id: string;
+  leadNumber: string;
   firstName: string;
   lastName: string;
   company: string;
@@ -46,14 +47,8 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   prospect: "Prospect",
   site_visit_scheduled: "Site Visit Scheduled",
   site_visit_happened: "Site Visit Happened",
-  sales: "Sales",
-  opportunity: "Opportunity",
-  quotation: "Quotation",
-  approval: "Approval",
-  booking: "Booking",
-  duplicate: "Duplicate",
-  lost: "Lost",
   booked: "Booked",
+  lost: "Lost",
 };
 
 const statusColors: Record<string, string> = {
@@ -64,12 +59,6 @@ const statusColors: Record<string, string> = {
   site_visit_happened: "bg-amber-100 text-amber-800",
   booked: "bg-green-100 text-green-800",
   lost: "bg-red-100 text-red-800",
-  sales: "bg-purple-100 text-purple-800",
-  opportunity: "bg-indigo-100 text-indigo-800",
-  contacted: "bg-yellow-100 text-yellow-800",
-  qualified: "bg-green-100 text-green-800",
-  unqualified: "bg-gray-100 text-gray-800",
-  converted: "bg-purple-100 text-purple-800",
 };
 
 const priorityColors: Record<string, string> = {
@@ -80,6 +69,13 @@ const priorityColors: Record<string, string> = {
 };
 
 export const leadColumns: ColumnDef<Lead>[] = [
+  {
+    accessorKey: "leadNumber",
+    header: "Lead Number",
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{row.getValue("leadNumber")}</span>
+    ),
+  },
   {
     accessorKey: "firstName",
     header: "Name",

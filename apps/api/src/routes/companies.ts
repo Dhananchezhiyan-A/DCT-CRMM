@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
+import bcrypt from 'bcryptjs';
 import { prisma } from '@dct-crm/db';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
@@ -40,6 +41,7 @@ const WROTE_FIELDS = [
   'name', 'companyCode', 'email', 'phone', 'website',
   'address', 'city', 'state', 'country', 'postalCode',
   'timezone', 'currency', 'description', 'domain', 'settings',
+  'companyStartDate', 'companyExpiryDate',
 ] as const;
 
 const createCompanySchema = z.object({
@@ -47,7 +49,7 @@ const createCompanySchema = z.object({
   companyCode: z.string().min(1, 'Company code is required').max(50).regex(/^[A-Za-z0-9_-]+$/, 'Company code must be alphanumeric with hyphens or underscores'),
   email: z.string().email('Valid email is required').min(1, 'Email is required'),
   phone: z.string().min(1, 'Phone is required').max(30),
-  website: z.string().url('Invalid URL').min(1, 'Website is required'),
+  website: z.string().url('Invalid URL').optional().or(z.literal('')),
   address: z.string().max(500).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
   state: z.string().max(100).optional().or(z.literal('')),
@@ -57,14 +59,26 @@ const createCompanySchema = z.object({
   currency: z.string().max(10).optional().or(z.literal('')),
   description: z.string().max(2000).optional().or(z.literal('')),
   domain: z.string().max(200).optional().or(z.literal('')),
-});
+  companyStartDate: z.string().optional().or(z.literal('')),
+  companyExpiryDate: z.string().optional().or(z.literal('')),
+  initialAdmin: z.object({
+    username: z.string().min(1, 'Admin username is required').max(100),
+    adminName: z.string().max(200).optional().or(z.literal('')),
+    email: z.string().email('Valid admin email is required'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string(),
+  }).optional(),
+}).refine(
+  (data) => !data.initialAdmin || data.initialAdmin.password === data.initialAdmin.confirmPassword,
+  { message: 'Passwords do not match', path: ['initialAdmin', 'confirmPassword'] }
+);
 
 const updateCompanySchema = z.object({
   name: z.string().min(1).max(200).optional(),
   companyCode: z.string().min(1).max(50).regex(/^[A-Za-z0-9_-]+$/).optional(),
   email: z.string().email('Valid email is required').min(1, 'Email is required'),
   phone: z.string().min(1, 'Phone is required').max(30),
-  website: z.string().url('Invalid URL').min(1, 'Website is required'),
+  website: z.string().url('Invalid URL').optional().or(z.literal('')),
   address: z.string().max(500).optional().or(z.literal('')),
   city: z.string().max(100).optional().or(z.literal('')),
   state: z.string().max(100).optional().or(z.literal('')),
@@ -74,16 +88,30 @@ const updateCompanySchema = z.object({
   currency: z.string().max(10).optional().or(z.literal('')),
   description: z.string().max(2000).optional().or(z.literal('')),
   domain: z.string().max(200).optional().or(z.literal('')),
+  companyStartDate: z.string().optional().or(z.literal('')),
+  companyExpiryDate: z.string().optional().or(z.literal('')),
 }).refine(Object.keys, { message: 'At least one field must be provided' });
 
 const ALLOWED_SORT_FIELDS = ['name', 'companyCode', 'createdAt', 'updatedAt', 'isActive'];
 const ALLOWED_SORT_ORDERS = ['asc', 'desc'];
 
+function getCompanyLifecycleStatus(tenant: { isActive: boolean; companyStartDate: Date | null; companyExpiryDate: Date | null }): string {
+  if (!tenant.isActive) return 'deactivated';
+  const now = new Date();
+  if (tenant.companyStartDate && now < tenant.companyStartDate) return 'pending';
+  if (tenant.companyExpiryDate && now > tenant.companyExpiryDate) return 'expired';
+  return 'active';
+}
+
 function sanitizeCompanyCreate(data: any) {
   const sanitized: any = {};
   for (const field of WROTE_FIELDS) {
     if (data[field] !== undefined && data[field] !== null) {
-      sanitized[field] = data[field] === '' ? null : data[field];
+      if (field === 'companyStartDate' || field === 'companyExpiryDate') {
+        sanitized[field] = data[field] === '' ? null : data[field] ? new Date(data[field]) : null;
+      } else {
+        sanitized[field] = data[field] === '' ? null : data[field];
+      }
     }
   }
   return sanitized;
@@ -94,7 +122,11 @@ function sanitizeCompanyUpdate(data: any) {
   const protectedFields = ['id', 'createdAt', 'updatedAt', 'createdBy', 'isSuperAdmin'];
   for (const [key, value] of Object.entries(data)) {
     if (!protectedFields.includes(key) && WROTE_FIELDS.includes(key as any)) {
-      sanitized[key] = value === '' ? null : value;
+      if (key === 'companyStartDate' || key === 'companyExpiryDate') {
+        sanitized[key] = value === '' ? null : value ? new Date(value as string) : null;
+      } else {
+        sanitized[key] = value === '' ? null : value;
+      }
     }
   }
   return sanitized;
@@ -146,9 +178,14 @@ router.get('/companies', async (req: AuthRequest, res: Response) => {
       prisma.tenant.count({ where }),
     ]);
 
+    const tenantsWithLifecycle = tenants.map((t) => ({
+      ...t,
+      lifecycleStatus: getCompanyLifecycleStatus(t),
+    }));
+
     res.json({
       success: true,
-      data: tenants,
+      data: tenantsWithLifecycle,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -189,7 +226,25 @@ router.get('/companies/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, error: 'Company not found' });
     }
 
-    res.json({ success: true, data: tenant });
+    const adminProfiles = await prisma.profile.findMany({
+      where: { tenantId: id, isAdmin: true },
+      select: { id: true },
+    });
+    const adminProfileIds = adminProfiles.map((p) => p.id);
+    const adminUserCount = adminProfileIds.length > 0
+      ? await prisma.user.count({
+          where: { tenantId: id, isActive: true, isSuperAdmin: false, profileId: { in: adminProfileIds } },
+        })
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        ...tenant,
+        lifecycleStatus: getCompanyLifecycleStatus(tenant),
+        adminUserCount,
+      },
+    });
   } catch (error) {
     console.error('Get company error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch company' });
@@ -199,8 +254,9 @@ router.get('/companies/:id', async (req: AuthRequest, res: Response) => {
 router.post('/companies', async (req: AuthRequest, res: Response) => {
   try {
     const rawData = createCompanySchema.parse(req.body);
+    const { initialAdmin, ...companyData } = rawData;
 
-    const cleanData = sanitizeCompanyCreate(rawData);
+    const cleanData = sanitizeCompanyCreate(companyData);
 
     const existingBySlug = await prisma.tenant.findUnique({
       where: { slug: cleanData.companyCode.toLowerCase().replace(/[_\s]+/g, '-') },
@@ -216,41 +272,93 @@ router.post('/companies', async (req: AuthRequest, res: Response) => {
       return res.status(409).json({ success: false, error: 'Company code already exists' });
     }
 
+    if (initialAdmin) {
+      const existingAdminUser = await prisma.user.findFirst({
+        where: { email: initialAdmin.email },
+      });
+      if (existingAdminUser) {
+        return res.status(409).json({ success: false, error: 'A user with this admin email already exists' });
+      }
+    }
+
     const slug = cleanData.companyCode.toLowerCase().replace(/[_\s]+/g, '-');
 
-    const tenant = await prisma.tenant.create({
-      data: {
-        name: cleanData.name,
-        slug,
-        companyCode: cleanData.companyCode,
-        email: cleanData.email || null,
-        phone: cleanData.phone || null,
-        website: cleanData.website || null,
-        address: cleanData.address || null,
-        city: cleanData.city || null,
-        state: cleanData.state || null,
-        country: cleanData.country || null,
-        postalCode: cleanData.postalCode || null,
-        timezone: cleanData.timezone || null,
-        currency: cleanData.currency || null,
-        description: cleanData.description || null,
-        domain: cleanData.domain || null,
-        createdBy: req.user!.id,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name: cleanData.name,
+          slug,
+          companyCode: cleanData.companyCode,
+          email: cleanData.email || null,
+          phone: cleanData.phone || null,
+          website: cleanData.website || null,
+          address: cleanData.address || null,
+          city: cleanData.city || null,
+          state: cleanData.state || null,
+          country: cleanData.country || null,
+          postalCode: cleanData.postalCode || null,
+          timezone: cleanData.timezone || null,
+          currency: cleanData.currency || null,
+          description: cleanData.description || null,
+          domain: cleanData.domain || null,
+          companyStartDate: cleanData.companyStartDate || null,
+          companyExpiryDate: cleanData.companyExpiryDate || null,
+          createdBy: req.user!.id,
+        },
+      });
+
+      let adminUser = null;
+
+      if (initialAdmin) {
+        const adminProfile = await tx.profile.findFirst({
+          where: { tenantId: tenant.id, isAdmin: true },
+        });
+
+        const passwordHash = await bcrypt.hash(initialAdmin.password, 12);
+
+        const firstNameParts = (initialAdmin.adminName || initialAdmin.username).split(' ');
+        const firstName = firstNameParts[0] || initialAdmin.username;
+        const lastName = firstNameParts.slice(1).join(' ') || '';
+
+        adminUser = await tx.user.create({
+          data: {
+            tenantId: tenant.id,
+            email: initialAdmin.email,
+            passwordHash,
+            firstName,
+            lastName,
+            isActive: true,
+            profileId: adminProfile?.id || undefined,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            tenantId: tenant.id,
+            userId: req.user!.id,
+            action: 'CREATE',
+            objectType: 'User',
+            objectId: adminUser.id,
+            newValues: { email: initialAdmin.email, role: 'Initial Admin', linkedCompanyId: tenant.id },
+          },
+        });
+      }
+
+      return { tenant, adminUser };
     });
 
     await auditLog(
-      tenant.id,
+      result.tenant.id,
       req.user!.id,
       'CREATE',
       'Tenant',
-      tenant.id,
+      result.tenant.id,
       undefined,
-      { name: tenant.name, companyCode: tenant.companyCode },
+      { name: result.tenant.name, companyCode: result.tenant.companyCode, hasInitialAdmin: !!initialAdmin },
       req.ip,
     );
 
-    res.status(201).json({ success: true, data: tenant });
+    res.status(201).json({ success: true, data: result.tenant });
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return res.status(400).json({ success: false, error: error.errors[0].message });
@@ -297,6 +405,10 @@ router.put('/companies/:id', async (req: AuthRequest, res: Response) => {
       data: cleanData,
     });
 
+    const auditChanges: Record<string, any> = {};
+    if (cleanData.companyStartDate !== undefined) auditChanges.companyStartDate = { old: existingTenant.companyStartDate, new: cleanData.companyStartDate };
+    if (cleanData.companyExpiryDate !== undefined) auditChanges.companyExpiryDate = { old: existingTenant.companyExpiryDate, new: cleanData.companyExpiryDate };
+
     await auditLog(
       req.user!.tenantId,
       req.user!.id,
@@ -304,7 +416,7 @@ router.put('/companies/:id', async (req: AuthRequest, res: Response) => {
       'Tenant',
       tenant.id,
       existingTenant,
-      cleanData,
+      { ...cleanData, ...(Object.keys(auditChanges).length > 0 ? { lifecycleChanges: auditChanges } : {}) },
       req.ip,
     );
 

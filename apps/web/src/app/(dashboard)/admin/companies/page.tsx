@@ -41,12 +41,15 @@ interface Company {
   phone?: string;
   logo?: string;
   isActive: boolean;
+  lifecycleStatus?: string;
+  companyStartDate?: string | null;
+  companyExpiryDate?: string | null;
   createdAt: string;
   _count: { users: number };
 }
 
 export default function CompaniesPage() {
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [companies, setCompanies] = React.useState<Company[]>([]);
@@ -131,12 +134,12 @@ export default function CompaniesPage() {
     }
   };
 
-  if (!isSuperAdmin && !isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <AlertCircle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold">Access Denied</h2>
-        <p className="text-muted-foreground mt-2">Admin access required.</p>
+        <p className="text-muted-foreground mt-2">Super Admin access required.</p>
       </div>
     );
   }
@@ -181,7 +184,7 @@ export default function CompaniesPage() {
         >
           <option value="">All Status</option>
           <option value="true">Active</option>
-          <option value="false">Inactive</option>
+          <option value="false">Inactive / Expired</option>
         </select>
         <select
           value={`${sortBy}-${sortOrder}`}
@@ -261,8 +264,16 @@ export default function CompaniesPage() {
                     <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{company.companyCode}</code>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge className={company.isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                      {company.isActive ? "Active" : "Inactive"}
+                    <Badge className={
+                      company.lifecycleStatus === "active" ? "bg-green-100 text-green-800" :
+                      company.lifecycleStatus === "pending" ? "bg-blue-100 text-blue-800" :
+                      company.lifecycleStatus === "expired" ? "bg-red-100 text-red-800" :
+                      "bg-gray-100 text-gray-800"
+                    }>
+                      {company.lifecycleStatus === "active" ? "Active" :
+                       company.lifecycleStatus === "pending" ? "Pending" :
+                       company.lifecycleStatus === "expired" ? "Expired" :
+                       company.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </td>
                   <td className="px-4 py-3">{company._count?.users || 0}</td>

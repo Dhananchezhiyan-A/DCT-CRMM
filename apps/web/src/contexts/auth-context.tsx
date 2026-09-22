@@ -17,6 +17,7 @@ export interface UserData {
   avatar?: string;
   phone?: string;
   isSuperAdmin?: boolean;
+  impersonatedBy?: string | null;
 }
 
 export interface AuthContextType {
@@ -39,6 +40,7 @@ export interface AuthContextType {
   hasModulePermission: (module: string, action: string) => boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
+  stopImpersonating: () => Promise<void>;
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
@@ -170,6 +172,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsAdmin(false);
             setTenant(null);
             window.location.href = "/login";
+          }
+        },
+        stopImpersonating: async () => {
+          try {
+            await authApi.stopImpersonation();
+          } finally {
+            window.location.href = "/dashboard";
           }
         },
       }}

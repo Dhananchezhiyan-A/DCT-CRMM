@@ -224,14 +224,41 @@ router.patch('/:id/confirm', authorize('Booking', 'edit'), async (req: AuthReque
       return res.status(400).json({ success: false, error: 'Only pending bookings can be confirmed' });
     }
 
-    const booking = await prisma.booking.update({
-      where: { id: req.params.id },
-      data: { status: 'CONFIRMED' },
+    const result = await prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.update({
+        where: { id: req.params.id },
+        data: { status: 'CONFIRMED' },
+      });
+
+      if (existing.leadId) {
+        const lead = await tx.lead.findUnique({ where: { id: existing.leadId } });
+        if (lead && lead.status === 'SITE_VISIT_HAPPENED') {
+          await tx.lead.update({
+            where: { id: existing.leadId },
+            data: { status: 'BOOKED' },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              tenantId,
+              userId,
+              leadId: existing.leadId,
+              action: 'LEAD_BOOKED',
+              objectType: 'Lead',
+              objectId: existing.leadId,
+              oldValues: { status: 'SITE_VISIT_HAPPENED' },
+              newValues: { status: 'BOOKED', bookingId: booking.id },
+            },
+          });
+        }
+      }
+
+      await auditLog(tenantId, userId, 'UPDATE', 'Booking', booking.id, existing, { status: 'CONFIRMED' });
+
+      return booking;
     });
 
-    await auditLog(tenantId, userId, 'UPDATE', 'Booking', booking.id, existing, { status: 'CONFIRMED' });
-
-    res.json({ success: true, data: booking });
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error('Confirm booking error:', error);
     res.status(500).json({ success: false, error: 'Failed to confirm booking' });

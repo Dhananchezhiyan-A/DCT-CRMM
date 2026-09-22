@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { leadApi, siteVisitApi, opportunityApi, activityApi, taskApi, followUpApi, objectManagerApi } from "@/lib/api";
+import { leadApi, siteVisitApi, opportunityApi, activityApi, taskApi, followUpApi, objectManagerApi, projectApi } from "@/lib/api";
 import LayoutDrivenForm from "@/components/admin/layout-driven-form";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -45,6 +46,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  StickyNote,
 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -53,14 +55,8 @@ const STATUS_LABELS: Record<string, string> = {
   PROSPECT: "Prospect",
   SITE_VISIT_SCHEDULED: "Site Visit Scheduled",
   SITE_VISIT_HAPPENED: "Site Visit Happened",
-  SALES: "Sales",
-  OPPORTUNITY: "Opportunity",
-  QUOTATION: "Quotation",
-  APPROVAL: "Approval",
-  BOOKING: "Booking",
-  DUPLICATE: "Duplicate",
-  LOST: "Lost",
   BOOKED: "Booked",
+  LOST: "Lost",
 };
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info"> = {
@@ -69,14 +65,8 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   PROSPECT: "warning",
   SITE_VISIT_SCHEDULED: "warning",
   SITE_VISIT_HAPPENED: "success",
-  SALES: "default",
-  OPPORTUNITY: "success",
-  QUOTATION: "default",
-  APPROVAL: "secondary",
-  BOOKING: "success",
-  DUPLICATE: "secondary",
-  LOST: "destructive",
   BOOKED: "success",
+  LOST: "destructive",
 };
 
 const RECOVERY_REASONS = [
@@ -100,6 +90,7 @@ const LEAD_STATUS_PROGRESSION = [
 
 interface LeadData {
   id: string;
+  leadNumber: string;
   salutation?: string;
   firstName?: string;
   lastName: string;
@@ -134,6 +125,7 @@ interface LeadData {
   tasks?: any[];
   followUps?: any[];
   auditLogs?: any[];
+  ownerHistory?: any[];
   createdAt: string;
   updatedAt: string;
 }
@@ -141,7 +133,7 @@ interface LeadData {
 export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, user } = useAuth();
+  const { profile, user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const leadId = params.id as string;
 
@@ -154,6 +146,34 @@ export default function LeadDetailPage() {
   const [recoveryNote, setRecoveryNote] = React.useState("");
   const [layout, setLayout] = React.useState<any>(null);
   const [fields, setFields] = React.useState<any[]>([]);
+
+  const [statusNote, setStatusNote] = React.useState("");
+  const [statusDialogOpen, setStatusDialogOpen] = React.useState(false);
+  const [pendingStatus, setPendingStatus] = React.useState("");
+
+  const [followUpDialogOpen, setFollowUpDialogOpen] = React.useState(false);
+  const [followUpNote, setFollowUpNote] = React.useState("");
+  const [followUpDate, setFollowUpDate] = React.useState("");
+  const [followUpTime, setFollowUpTime] = React.useState("");
+
+  const [taskDialogOpen, setTaskDialogOpen] = React.useState(false);
+  const [taskNote, setTaskNote] = React.useState("");
+  const [taskDueDate, setTaskDueDate] = React.useState("");
+  const [taskTime, setTaskTime] = React.useState("");
+
+  const [siteVisitDialogOpen, setSiteVisitDialogOpen] = React.useState(false);
+  const [svProjectId, setSvProjectId] = React.useState("");
+  const [svNote, setSvNote] = React.useState("");
+  const [svDate, setSvDate] = React.useState("");
+  const [svTime, setSvTime] = React.useState("");
+  const [projects, setProjects] = React.useState<any[]>([]);
+
+  const [noteDialogOpen, setNoteDialogOpen] = React.useState(false);
+  const [noteContent, setNoteContent] = React.useState("");
+  const [noteSubject, setNoteSubject] = React.useState("");
+
+  const [pushSvcDialogOpen, setPushSvcDialogOpen] = React.useState(false);
+  const [pushSvcReason, setPushSvcReason] = React.useState("");
 
   const fetchLead = React.useCallback(async () => {
     try {
@@ -179,6 +199,14 @@ export default function LeadDetailPage() {
     fetchLead();
   }, [fetchLead]);
 
+  React.useEffect(() => {
+    if (siteVisitDialogOpen) {
+      projectApi.list({ limit: 100 }).then((res) => {
+        setProjects(res.data.data || []);
+      });
+    }
+  }, [siteVisitDialogOpen]);
+
   const profileName = profile?.name?.toLowerCase() || "";
   const isAdminOrManager = profileName.includes("admin") || profileName.includes("manager");
   const isPresales = profileName.includes("presales");
@@ -202,51 +230,50 @@ export default function LeadDetailPage() {
     }
   };
 
-  const handleStatusUpdate = (newStatus: string) =>
-    handleAction(async () => {
-      await leadApi.updateStatus(leadId, newStatus);
-      toast({ title: "Success", description: `Status updated to ${STATUS_LABELS[newStatus] || newStatus}` });
-    }, "Status update");
+  const handleStatusUpdateWithNote = async () => {
+    if (!statusNote.trim()) {
+      toast({ title: "Validation", description: "A note/reason is required for status change", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      await leadApi.updateStatus(leadId, pendingStatus, statusNote);
+      toast({ title: "Success", description: `Status updated to ${STATUS_LABELS[pendingStatus] || pendingStatus}` });
+      setStatusDialogOpen(false);
+      setStatusNote("");
+      setPendingStatus("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Status update failed", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
-  const handleReceiveLead = () => handleStatusUpdate("INCOMING");
+  const openStatusDialog = (newStatus: string) => {
+    setPendingStatus(newStatus);
+    setStatusNote("");
+    setStatusDialogOpen(true);
+  };
 
-  const handleRequestSiteVisit = () =>
-    handleAction(async () => {
-      await siteVisitApi.create({ leadId, status: "SCHEDULED" });
-      await leadApi.updateStatus(leadId, "SITE_VISIT_SCHEDULED");
-      toast({ title: "Success", description: "Site visit requested" });
-    }, "Site visit request");
-
-  const handleMarkVisitCompleted = () =>
-    handleAction(async () => {
-      await leadApi.updateStatus(leadId, "SITE_VISIT_HAPPENED");
-      toast({ title: "Success", description: "Site visit marked as completed" });
-    }, "Mark completed");
-
-  const handleRescheduleVisit = () =>
-    handleAction(async () => {
-      await leadApi.updateStatus(leadId, "SITE_VISIT_SCHEDULED");
-      toast({ title: "Success", description: "Visit rescheduled" });
-    }, "Reschedule");
-
-  const handleConvertLead = () =>
-    handleAction(async () => {
-      await opportunityApi.create({ leadId });
-      await leadApi.updateStatus(leadId, "OPPORTUNITY");
-      toast({ title: "Success", description: "Lead converted to opportunity" });
-    }, "Convert lead");
-
-  const handleCreateOpportunity = () =>
-    handleAction(async () => {
-      await opportunityApi.create({ leadId });
-      toast({ title: "Success", description: "Opportunity created" });
-    }, "Create opportunity");
-
-  const handleCreateBooking = () =>
-    handleAction(async () => {
-      await leadApi.updateStatus(leadId, "BOOKING");
-      toast({ title: "Success", description: "Booking created" });
-    }, "Create booking");
+  const handlePushToSVC = async () => {
+    if (!pushSvcReason.trim()) {
+      toast({ title: "Validation", description: "A reason/note is required", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      await leadApi.pushToSVC(leadId, { reason: pushSvcReason });
+      toast({ title: "Success", description: "Lead pushed to SVC" });
+      setPushSvcDialogOpen(false);
+      setPushSvcReason("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Push to SVC failed", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
   const handleMoveToRecovery = async () => {
     if (!recoveryReason) {
@@ -255,14 +282,105 @@ export default function LeadDetailPage() {
     }
     setIsActionLoading(true);
     try {
-      await leadApi.recovery(leadId, { recoveryReason, note: recoveryNote || undefined });
+      await leadApi.moveToRecovery(leadId, { recoveryReason, note: recoveryNote || undefined });
       toast({ title: "Success", description: "Lead moved to recovery" });
       setRecoveryDialogOpen(false);
       setRecoveryReason("");
       setRecoveryNote("");
       await fetchLead();
-    } catch {
-      toast({ title: "Error", description: "Failed to move to recovery", variant: "destructive" as any });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Failed to move to recovery", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleScheduleSiteVisit = async () => {
+    if (!svNote.trim()) {
+      toast({ title: "Validation", description: "Note/reason is required", variant: "destructive" as any });
+      return;
+    }
+    if (!svDate || !svTime) {
+      toast({ title: "Validation", description: "Visit date and time are required", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      const scheduledAt = new Date(`${svDate}T${svTime}`).toISOString();
+      await leadApi.scheduleSiteVisit(leadId, { scheduledAt, notes: svNote, projectId: svProjectId || undefined });
+      toast({ title: "Success", description: "Site visit scheduled" });
+      setSiteVisitDialogOpen(false);
+      setSvNote("");
+      setSvDate("");
+      setSvTime("");
+      setSvProjectId("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Failed to schedule site visit", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleCreateFollowUp = async () => {
+    if (!followUpNote.trim() || !followUpDate || !followUpTime) {
+      toast({ title: "Validation", description: "Note, date, and time are all required", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      const dueDate = new Date(`${followUpDate}T${followUpTime}`).toISOString();
+      await followUpApi.create({ title: followUpNote, description: followUpNote, dueDate, leadId });
+      toast({ title: "Success", description: "Follow-up created" });
+      setFollowUpDialogOpen(false);
+      setFollowUpNote("");
+      setFollowUpDate("");
+      setFollowUpTime("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Failed to create follow-up", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!taskNote.trim() || !taskDueDate || !taskTime) {
+      toast({ title: "Validation", description: "Description, due date, and time are all required", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      const dueDate = new Date(`${taskDueDate}T${taskTime}`).toISOString();
+      await taskApi.create({ title: taskNote, description: taskNote, dueDate, leadId });
+      toast({ title: "Success", description: "Task created" });
+      setTaskDialogOpen(false);
+      setTaskNote("");
+      setTaskDueDate("");
+      setTaskTime("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Failed to create task", variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleCreateNote = async () => {
+    if (!noteContent.trim()) {
+      toast({ title: "Validation", description: "Note content is required", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      await activityApi.create({ type: "NOTE", subject: noteSubject || "Note", description: noteContent, leadId });
+      toast({ title: "Success", description: "Note added" });
+      setNoteDialogOpen(false);
+      setNoteContent("");
+      setNoteSubject("");
+      await fetchLead();
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.response?.data?.error || "Failed to add note", variant: "destructive" as any });
     } finally {
       setIsActionLoading(false);
     }
@@ -275,54 +393,26 @@ export default function LeadDetailPage() {
       (isAdminOrManager || roleCheck) && statuses.includes(status);
 
     if (canAct(isPresales, ["NEW", "INCOMING"])) {
-      if (status === "NEW") actions.push({ label: "Receive Lead", onClick: handleReceiveLead, variant: "default" });
-      actions.push({ label: "Add Requirement", onClick: () => toast({ title: "Info", description: "Requirement form would open" }), variant: "outline" });
-      actions.push({ label: "Add Follow-up", onClick: () => toast({ title: "Info", description: "Follow-up form would open" }), variant: "outline" });
-      actions.push({ label: "Move to Recovery", onClick: () => setRecoveryDialogOpen(true), variant: "destructive" });
+      if (status === "INCOMING") {
+        actions.push({ label: "Push to SVC", onClick: () => setPushSvcDialogOpen(true), variant: "default" });
+        actions.push({ label: "Move to Recovery", onClick: () => setRecoveryDialogOpen(true), variant: "destructive" });
+      }
     }
 
     if (canAct(isSVC, ["PROSPECT"])) {
-      actions.push({ label: "Request Site Visit", onClick: handleRequestSiteVisit, variant: "default" });
-      actions.push({ label: "Assign Executive", onClick: () => toast({ title: "Info", description: "Assign executive form would open" }), variant: "outline" });
-      actions.push({ label: "Schedule Visit", onClick: handleRequestSiteVisit, variant: "outline" });
+      actions.push({ label: "Schedule Site Visit", onClick: () => setSiteVisitDialogOpen(true), variant: "default" });
     }
 
     if (canAct(isSVC, ["SITE_VISIT_SCHEDULED"])) {
-      actions.push({ label: "Mark Visit Completed", onClick: handleMarkVisitCompleted, variant: "default" });
-      actions.push({ label: "Add Feedback", onClick: () => toast({ title: "Info", description: "Feedback form would open" }), variant: "outline" });
-      actions.push({ label: "Reschedule Visit", onClick: handleRescheduleVisit, variant: "outline" });
-      actions.push({ label: "Add Follow-up", onClick: () => toast({ title: "Info", description: "Follow-up form would open" }), variant: "outline" });
+      actions.push({ label: "Mark Visit Completed", onClick: () => openStatusDialog("SITE_VISIT_HAPPENED"), variant: "default" });
     }
 
-    if (canAct(isSales, ["SITE_VISIT_SCHEDULED"])) {
-      actions.push({ label: "View Lead", onClick: () => {}, variant: "outline" });
-    }
-
-    if (canAct(isSales, ["SITE_VISIT_HAPPENED"])) {
-      actions.push({ label: "Convert Lead", onClick: handleConvertLead, variant: "default" });
-      actions.push({ label: "Create Opportunity", onClick: handleCreateOpportunity, variant: "outline" });
-      actions.push({ label: "Create Quotation", onClick: () => toast({ title: "Info", description: "Quotation form would open" }), variant: "outline" });
-    }
-
-    if (canAct(isCRM, ["SITE_VISIT_HAPPENED"])) {
-      actions.push({ label: "Create Booking", onClick: handleCreateBooking, variant: "default" });
-    }
-
-    if (canAct(isCRM, ["BOOKED"])) {
-      actions.push({ label: "View Booking", onClick: () => {}, variant: "outline" });
-      actions.push({ label: "Add Payment", onClick: () => toast({ title: "Info", description: "Payment form would open" }), variant: "outline" });
-      actions.push({ label: "Add Reminder", onClick: () => toast({ title: "Info", description: "Reminder form would open" }), variant: "outline" });
-    }
-
-    if (canAct(isFinance, ["BOOKED"])) {
-      actions.push({ label: "Add Bank Details", onClick: () => toast({ title: "Info", description: "Bank details form would open" }), variant: "outline" });
-      actions.push({ label: "Record Payment", onClick: () => toast({ title: "Info", description: "Record payment form would open" }), variant: "default" });
-      actions.push({ label: "Verify Payment", onClick: () => toast({ title: "Info", description: "Verify payment form would open" }), variant: "outline" });
+    if (canAct(isSales, ["SITE_VISIT_SCHEDULED", "SITE_VISIT_HAPPENED"])) {
+      actions.push({ label: "Mark Booked", onClick: () => openStatusDialog("BOOKED"), variant: "default" });
     }
 
     if (canAct(isRecovery, ["LOST"])) {
-      actions.push({ label: "Add Recovery Follow-up", onClick: () => toast({ title: "Info", description: "Recovery follow-up form would open" }), variant: "default" });
-      actions.push({ label: "Add Recovery Notes", onClick: () => toast({ title: "Info", description: "Recovery notes form would open" }), variant: "outline" });
+      actions.push({ label: "Move to Incoming", onClick: () => openStatusDialog("INCOMING"), variant: "default" });
     }
 
     return actions;
@@ -330,7 +420,7 @@ export default function LeadDetailPage() {
 
   const workflowActions = getWorkflowActions();
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-start justify-between">
@@ -359,6 +449,8 @@ export default function LeadDetailPage() {
       </div>
     );
   }
+
+  const leadDisplayName = `${lead.firstName ? lead.firstName + " " : ""}${lead.lastName}`;
 
   return (
     <div className="space-y-6">
@@ -413,12 +505,21 @@ export default function LeadDetailPage() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{lead.firstName} {lead.lastName}</h1>
+            <h1 className="text-2xl font-bold">{leadDisplayName}</h1>
+            <Badge variant="outline" className="font-mono text-sm">
+              {lead.leadNumber}
+            </Badge>
             <Badge variant={STATUS_VARIANT[STATUS_LABELS[status] ? status : "default"]}>
               {STATUS_LABELS[status] || status}
             </Badge>
           </div>
-          <p className="text-muted-foreground">Lead #{lead.id}</p>
+          <p className="text-muted-foreground text-sm mt-1">Lead ID: {lead.id}</p>
+          {lead.owner && (
+            <p className="text-sm mt-1">
+              <span className="text-muted-foreground">Owner: </span>
+              <span className="font-medium">{lead.owner.firstName} {lead.owner.lastName}</span>
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {workflowActions.map((action) => (
@@ -432,6 +533,27 @@ export default function LeadDetailPage() {
               {action.label}
             </Button>
           ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFollowUpDialogOpen(true)}
+          >
+            <Clock className="h-4 w-4 mr-1" />Follow-up
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTaskDialogOpen(true)}
+          >
+            <CheckSquare className="h-4 w-4 mr-1" />Task
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setNoteDialogOpen(true)}
+          >
+            <StickyNote className="h-4 w-4 mr-1" />Note
+          </Button>
         </div>
       </div>
 
@@ -440,6 +562,9 @@ export default function LeadDetailPage() {
         <TabsList>
           <TabsTrigger value="overview" className="gap-2">
             <User className="h-4 w-4" />Overview
+          </TabsTrigger>
+          <TabsTrigger value="owner-history" className="gap-2">
+            <History className="h-4 w-4" />Owner History
           </TabsTrigger>
           <TabsTrigger value="activities" className="gap-2">
             <History className="h-4 w-4" />Activities
@@ -500,6 +625,64 @@ export default function LeadDetailPage() {
                 )}
               </CardContent>
             </Card>
+        </TabsContent>
+
+        {/* Owner History Tab */}
+        <TabsContent value="owner-history" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Owner History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {lead.ownerHistory && lead.ownerHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {lead.ownerHistory.map((entry: any, idx: number) => (
+                    <div key={idx} className="flex items-start gap-3 p-3 rounded-md bg-muted/50">
+                      <User className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {entry.previousOwner && (
+                            <span className="text-sm font-medium">
+                              {entry.previousOwner.firstName} {entry.previousOwner.lastName}
+                            </span>
+                          )}
+                          {entry.previousOwner && entry.newOwner && (
+                            <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          {entry.newOwner && (
+                            <span className="text-sm font-medium">
+                              {entry.newOwner.firstName} {entry.newOwner.lastName}
+                            </span>
+                          )}
+                          {!entry.previousOwner && entry.newOwner && (
+                            <span className="text-sm text-muted-foreground">Initial Assignment</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                          {entry.previousProfile && <span>{entry.previousProfile}</span>}
+                          {entry.previousProfile && entry.newProfile && <span>→</span>}
+                          {entry.newProfile && <span>{entry.newProfile}</span>}
+                        </div>
+                        {entry.handoffReason && (
+                          <p className="text-xs text-muted-foreground mt-1">{entry.handoffReason}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                          <span>{new Date(entry.startDate).toLocaleString()}</span>
+                          {entry.endDate && <span>→ {new Date(entry.endDate).toLocaleString()}</span>}
+                          {!entry.endDate && <span>→ Current</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No owner history recorded</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Activities Tab */}
@@ -564,8 +747,8 @@ export default function LeadDetailPage() {
                     <div key={idx} className="flex items-center gap-3 text-left p-3 rounded-md bg-muted/50">
                       <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm">{fu.description || fu.type}</p>
-                        <p className="text-xs text-muted-foreground">{fu.scheduledAt ? new Date(fu.scheduledAt).toLocaleString() : fu.status}</p>
+                        <p className="text-sm">{fu.title || fu.description || fu.type}</p>
+                        <p className="text-xs text-muted-foreground">{fu.dueDate ? new Date(fu.dueDate).toLocaleString() : fu.status}</p>
                       </div>
                     </div>
                   ))}
@@ -590,8 +773,9 @@ export default function LeadDetailPage() {
                     <div key={idx} className="flex items-center gap-3 text-left p-3 rounded-md bg-muted/50">
                       <Map className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm">{sv.status || "Scheduled"}</p>
+                        <p className="text-sm">{sv.status || "Scheduled"} {sv.project?.name ? `- ${sv.project.name}` : ""}</p>
                         <p className="text-xs text-muted-foreground">{sv.scheduledAt ? new Date(sv.scheduledAt).toLocaleString() : sv.createdAt ? new Date(sv.createdAt).toLocaleString() : ""}</p>
+                        {sv.assignee && <p className="text-xs text-muted-foreground">Assigned: {sv.assignee.firstName} {sv.assignee.lastName}</p>}
                       </div>
                     </div>
                   ))}
@@ -633,14 +817,66 @@ export default function LeadDetailPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Status Change Dialog */}
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Status to {STATUS_LABELS[pendingStatus] || pendingStatus}</DialogTitle>
+            <DialogDescription>A note/reason is required for this status change.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="status-note">Note / Reason *</Label>
+              <Textarea
+                id="status-note"
+                placeholder="Enter the reason for this status change..."
+                value={statusNote}
+                onChange={(e) => setStatusNote(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handleStatusUpdateWithNote} disabled={isActionLoading || !statusNote.trim()}>
+              {isActionLoading ? "Updating..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Push to SVC Dialog */}
+      <Dialog open={pushSvcDialogOpen} onOpenChange={setPushSvcDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Push Lead to SVC?</DialogTitle>
+            <DialogDescription>This lead will be assigned to a Site Visit Coordinator via Round Robin.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="push-svc-reason">Reason / Note *</Label>
+              <Textarea
+                id="push-svc-reason"
+                placeholder="Enter reason for pushing to SVC..."
+                value={pushSvcReason}
+                onChange={(e) => setPushSvcReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPushSvcDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handlePushToSVC} disabled={isActionLoading || !pushSvcReason.trim()}>
+              {isActionLoading ? "Pushing..." : "Push to SVC"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Move to Recovery Dialog */}
       <Dialog open={recoveryDialogOpen} onOpenChange={setRecoveryDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Move Lead to Recovery?</DialogTitle>
-            <DialogDescription>
-              This lead will be marked as Lost and moved to the Recovery workflow.
-            </DialogDescription>
+            <DialogDescription>This lead will be marked as Lost and moved to the Recovery workflow.</DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); handleMoveToRecovery(); }}>
             <div className="space-y-4 py-2">
@@ -668,14 +904,202 @@ export default function LeadDetailPage() {
               </div>
             </div>
             <DialogFooter>
-            <Button variant="outline" onClick={() => setRecoveryDialogOpen(false)} disabled={isActionLoading}>
-              Cancel
-            </Button>
-            <Button variant="destructive" type="submit" disabled={isActionLoading}>
-              {isActionLoading ? "Moving..." : "Move to Recovery"}
+              <Button variant="outline" onClick={() => setRecoveryDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+              <Button variant="destructive" type="submit" disabled={isActionLoading}>
+                {isActionLoading ? "Moving..." : "Move to Recovery"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Site Visit Dialog */}
+      <Dialog open={siteVisitDialogOpen} onOpenChange={setSiteVisitDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Site Visit</DialogTitle>
+            <DialogDescription>All fields are mandatory.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="sv-project">Project *</Label>
+              <Select value={svProjectId} onValueChange={setSvProjectId}>
+                <SelectTrigger id="sv-project">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sv-note">Note / Reason *</Label>
+              <Textarea
+                id="sv-note"
+                placeholder="Enter reason for site visit..."
+                value={svNote}
+                onChange={(e) => setSvNote(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sv-date">Visit Date *</Label>
+                <Input
+                  id="sv-date"
+                  type="date"
+                  value={svDate}
+                  onChange={(e) => setSvDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sv-time">Visit Time *</Label>
+                <Input
+                  id="sv-time"
+                  type="time"
+                  value={svTime}
+                  onChange={(e) => setSvTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSiteVisitDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handleScheduleSiteVisit} disabled={isActionLoading}>
+              {isActionLoading ? "Scheduling..." : "Schedule Visit"}
             </Button>
           </DialogFooter>
-          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Follow-up Dialog */}
+      <Dialog open={followUpDialogOpen} onOpenChange={setFollowUpDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Follow-up</DialogTitle>
+            <DialogDescription>All fields are mandatory.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="fu-note">Note / Reason *</Label>
+              <Textarea
+                id="fu-note"
+                placeholder="Enter follow-up note/reason..."
+                value={followUpNote}
+                onChange={(e) => setFollowUpNote(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="fu-date">Date *</Label>
+                <Input
+                  id="fu-date"
+                  type="date"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fu-time">Time *</Label>
+                <Input
+                  id="fu-time"
+                  type="time"
+                  value={followUpTime}
+                  onChange={(e) => setFollowUpTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFollowUpDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handleCreateFollowUp} disabled={isActionLoading}>
+              {isActionLoading ? "Creating..." : "Create Follow-up"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Task Dialog */}
+      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Task</DialogTitle>
+            <DialogDescription>All fields are mandatory.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="task-note">Description *</Label>
+              <Textarea
+                id="task-note"
+                placeholder="Enter task description..."
+                value={taskNote}
+                onChange={(e) => setTaskNote(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="task-date">Due Date *</Label>
+                <Input
+                  id="task-date"
+                  type="date"
+                  value={taskDueDate}
+                  onChange={(e) => setTaskDueDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="task-time">Time *</Label>
+                <Input
+                  id="task-time"
+                  type="time"
+                  value={taskTime}
+                  onChange={(e) => setTaskTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTaskDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handleCreateTask} disabled={isActionLoading}>
+              {isActionLoading ? "Creating..." : "Create Task"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Note Dialog */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Note</DialogTitle>
+            <DialogDescription>Note content is mandatory.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="note-subject">Subject</Label>
+              <Input
+                id="note-subject"
+                placeholder="Note subject..."
+                value={noteSubject}
+                onChange={(e) => setNoteSubject(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="note-content">Note Content *</Label>
+              <Textarea
+                id="note-content"
+                placeholder="Enter note content..."
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialogOpen(false)} disabled={isActionLoading}>Cancel</Button>
+            <Button onClick={handleCreateNote} disabled={isActionLoading || !noteContent.trim()}>
+              {isActionLoading ? "Adding..." : "Add Note"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

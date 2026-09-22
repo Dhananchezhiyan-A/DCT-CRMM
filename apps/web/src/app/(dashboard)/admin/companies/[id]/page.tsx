@@ -41,6 +41,7 @@ import {
   Calendar,
   Settings,
   AlertTriangle,
+  Shield,
 } from "lucide-react";
 
 interface ProfileBreakdown {
@@ -86,6 +87,10 @@ interface CompanyDetails {
   currency?: string;
   description?: string;
   isActive: boolean;
+  companyStartDate?: string | null;
+  companyExpiryDate?: string | null;
+  lifecycleStatus?: string;
+  adminUserCount?: number;
   createdBy?: string;
   updatedBy?: string;
   createdAt: string;
@@ -267,12 +272,12 @@ export default function CompanyDetailsPage() {
     }
   };
 
-  if (!isSuperAdmin && !isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <AlertCircle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold">Access Denied</h2>
-        <p className="text-muted-foreground mt-2">Admin access required.</p>
+        <p className="text-muted-foreground mt-2">Super Admin access required.</p>
       </div>
     );
   }
@@ -379,10 +384,21 @@ export default function CompanyDetailsPage() {
                 onChange={handleLogoUpload}
                 className="hidden"
               />
-              <div className="text-center">
-                <Badge className={company.isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                  {company.isActive ? "Active" : "Inactive"}
+              <div className="text-center space-y-2">
+                <Badge className={
+                  company.lifecycleStatus === "active" ? "bg-green-100 text-green-800" :
+                  company.lifecycleStatus === "pending" ? "bg-blue-100 text-blue-800" :
+                  company.lifecycleStatus === "expired" ? "bg-red-100 text-red-800" :
+                  "bg-gray-100 text-gray-800"
+                }>
+                  {company.lifecycleStatus === "active" ? "Active" :
+                   company.lifecycleStatus === "pending" ? "Pending" :
+                   company.lifecycleStatus === "expired" ? "Expired" :
+                   company.isActive ? "Active" : "Inactive"}
                 </Badge>
+                {!company.isActive && (
+                  <Badge variant="outline" className="text-xs">Manually Deactivated</Badge>
+                )}
               </div>
             </div>
           </CardContent>
@@ -405,6 +421,9 @@ export default function CompanyDetailsPage() {
             <InfoItem icon={Clock} label="Timezone" value={company.timezone} />
             <InfoItem icon={DollarSign} label="Currency" value={company.currency} />
             <InfoItem icon={MapPin} label="Country" value={company.country} />
+            <InfoItem icon={Calendar} label="Start Date" value={company.companyStartDate ? new Date(company.companyStartDate).toLocaleDateString() : undefined} />
+            <InfoItem icon={Calendar} label="Expiry Date" value={company.companyExpiryDate ? new Date(company.companyExpiryDate).toLocaleDateString() : undefined} />
+            <InfoItem icon={Shield} label="Admin Users" value={company.adminUserCount !== undefined ? String(company.adminUserCount) : undefined} />
             {company.address && (
               <div className="md:col-span-2 space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Address</p>

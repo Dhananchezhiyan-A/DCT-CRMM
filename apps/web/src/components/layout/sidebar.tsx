@@ -63,7 +63,13 @@ function getNavigationByProfile(profileName: string | undefined, roles: string[]
 
   const allItems: NavItem[] = [
     { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { title: "Companies", href: "/admin/companies", icon: Building2 },
+  ];
+
+  if (isSuperAdmin) {
+    allItems.push({ title: "Companies", href: "/admin/companies", icon: Building2 });
+  }
+
+  allItems.push(
     {
       title: "CRM",
       href: "#",
@@ -90,20 +96,22 @@ function getNavigationByProfile(profileName: string | undefined, roles: string[]
     { title: "Projects", href: "/projects", icon: FolderKanban },
     { title: "Tasks", href: "/tasks", icon: CheckSquare },
     { title: "Reports", href: "/reports", icon: BarChart3 },
-  ];
+  );
 
   if (showAdminSection) {
     allItems.push({
-      title: "Admin",
+      title: "Setup",
       href: "#",
       icon: Settings,
       items: [
-        { title: "Company Management", href: "/admin/companies", icon: Building2 },
+        { title: "Setup Home", href: "/setup", icon: Settings },
+        ...(isSuperAdmin
+          ? [{ title: "Company Management", href: "/admin/companies", icon: Building2 }]
+          : [{ title: "Company Settings", href: "/setup/general/company-settings", icon: Building2 }]),
         { title: "Object Manager", href: "/admin/object-manager", icon: Database },
-        { title: "Users", href: "/admin/users", icon: Users },
         { title: "Profiles", href: "/admin/profiles", icon: UserCheck },
         { title: "Permission Sets", href: "/admin/permission-sets", icon: Settings },
-        { title: "Settings", href: "/admin", icon: Settings },
+        { title: "Admin", href: "/admin", icon: Settings },
       ],
     });
     return allItems;
@@ -143,7 +151,7 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { profile, roles, hasEffectivePermission, isSuperAdmin, isAdmin } = useAuth();
+  const { profile, roles, hasEffectivePermission, isSuperAdmin, isAdmin, tenant } = useAuth();
   const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
   const [customObjects, setCustomObjects] = React.useState<NavItem[]>([]);
 
@@ -211,10 +219,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       >
         <div className="flex h-16 items-center justify-between px-4 border-b">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">DCT</span>
-            </div>
-            <span className="font-bold text-lg">CRM</span>
+            {tenant && (tenant as any).logo ? (
+              <img
+                src={`/api/proxy/api/super-admin/logos/${(tenant as any).logo}`}
+                alt={tenant.name}
+                className="h-8 w-8 rounded object-cover"
+              />
+            ) : (
+              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-sm">DCT</span>
+              </div>
+            )}
+            <span className="font-bold text-lg">{isSuperAdmin ? "CRM" : (tenant?.name || "CRM")}</span>
           </Link>
           <Button variant="ghost" size="icon" onClick={onClose} className="lg:hidden">
             <X className="h-5 w-5" />

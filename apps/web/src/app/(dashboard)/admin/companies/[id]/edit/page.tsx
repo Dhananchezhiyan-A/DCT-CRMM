@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save, Upload, X, Loader2, AlertCircle, ImageOff } from "lucide-react";
 
 export default function CompanyEditPage() {
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const router = useRouter();
   const params = useParams();
   const companyId = params.id as string;
@@ -35,6 +35,8 @@ export default function CompanyEditPage() {
     timezone: "",
     currency: "",
     description: "",
+    companyStartDate: "",
+    companyExpiryDate: "",
   });
 
   React.useEffect(() => {
@@ -58,6 +60,8 @@ export default function CompanyEditPage() {
             timezone: c.timezone || "",
             currency: c.currency || "",
             description: c.description || "",
+            companyStartDate: c.companyStartDate ? c.companyStartDate.split("T")[0] : "",
+            companyExpiryDate: c.companyExpiryDate ? c.companyExpiryDate.split("T")[0] : "",
           });
           setCurrentLogo(c.logo || null);
         } else {
@@ -150,12 +154,12 @@ export default function CompanyEditPage() {
     }
   };
 
-  if (!isSuperAdmin && !isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <AlertCircle className="h-12 w-12 text-destructive mb-4" />
         <h2 className="text-xl font-semibold">Access Denied</h2>
-        <p className="text-muted-foreground mt-2">Admin access required.</p>
+        <p className="text-muted-foreground mt-2">Super Admin access required.</p>
       </div>
     );
   }
@@ -391,6 +395,34 @@ export default function CompanyEditPage() {
                 rows={3}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Company Lifecycle</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <input
+                type="date"
+                value={form.companyStartDate}
+                onChange={(e) => handleChange("companyStartDate", e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Date from which the company becomes active. Leave empty for immediate activation.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Expiry Date</label>
+              <input
+                type="date"
+                value={form.companyExpiryDate}
+                onChange={(e) => handleChange("companyExpiryDate", e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Date until which the company is active. Leave empty for no expiry.</p>
             </div>
           </CardContent>
         </Card>

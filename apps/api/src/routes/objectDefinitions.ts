@@ -37,7 +37,7 @@ router.get('/:name', async (req: AuthRequest, res: Response) => {
 
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
-    const { name, label, pluralLabel, description, icon } = req.body;
+    const { name, label, pluralLabel, description, icon, isAvailableInNavigation, isAvailableInReports } = req.body;
 
     if (!name || !label || !pluralLabel) {
       return res.status(400).json({ success: false, error: 'Name, label, and plural label are required' });
@@ -64,6 +64,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
           description: description || null,
           icon: icon || null,
           objectType: 'custom',
+          isAvailableInNavigation: isAvailableInNavigation !== false,
+          isAvailableInReports: isAvailableInReports !== false,
           createdBy: req.user!.id,
           updatedBy: req.user!.id,
         },
@@ -140,7 +142,7 @@ router.put('/:name', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, error: 'Cannot modify standard object definition' });
     }
 
-    const { label, pluralLabel, description, icon, isActive } = req.body;
+    const { label, pluralLabel, description, icon, isActive, isAvailableInNavigation, isAvailableInReports } = req.body;
 
     const object = await prisma.objectDefinition.update({
       where: { id: existing.id },
@@ -150,6 +152,8 @@ router.put('/:name', async (req: AuthRequest, res: Response) => {
         ...(description !== undefined && { description }),
         ...(icon !== undefined && { icon }),
         ...(isActive !== undefined && { isActive }),
+        ...(isAvailableInNavigation !== undefined && { isAvailableInNavigation }),
+        ...(isAvailableInReports !== undefined && { isAvailableInReports }),
         updatedBy: req.user!.id,
       },
     });

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@dct-crm/db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
 import { authorize } from '../middleware/authorization';
@@ -9,7 +9,6 @@ import { ApiResponse, PaginatedResponse } from '../types';
 import { Prisma } from '@prisma/client';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const projectSchema = z.object({
   name: z.string().min(1).max(200),

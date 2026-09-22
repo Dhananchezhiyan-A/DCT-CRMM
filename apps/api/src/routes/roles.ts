@@ -11,6 +11,7 @@ router.use(authenticate);
 const roleSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
+  parentRoleId: z.string().nullable().optional(),
   permissionSetIds: z.array(z.string()).optional(),
 });
 
@@ -36,6 +37,12 @@ router.get('/', authorize('Role', 'read'), async (req: AuthRequest, res: Respons
           permissionSets: {
             include: {
               permissionSet: { select: { id: true, name: true, objectName: true, permissions: true } },
+            },
+          },
+          parentRole: { select: { id: true, name: true } },
+          users: {
+            select: {
+              user: { select: { id: true, firstName: true, lastName: true, email: true } },
             },
           },
           _count: { select: { users: true } },
@@ -73,6 +80,8 @@ router.get('/:id', authorize('Role', 'read'), async (req: AuthRequest, res: Resp
             permissionSet: { select: { id: true, name: true, objectName: true, permissions: true } },
           },
         },
+        parentRole: { select: { id: true, name: true } },
+        childRoles: { select: { id: true, name: true } },
         users: {
           include: {
             user: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -105,11 +114,23 @@ router.post('/', authorize('Role', 'create'), async (req: AuthRequest, res: Resp
       return res.status(409).json({ success: false, error: 'Role with this name already exists' });
     }
 
+    if (data.parentRoleId) {
+      const parentRole = await prisma.role.findFirst({
+        where: { id: data.parentRoleId, tenantId: req.tenantId! },
+        select: { id: true },
+      });
+      if (!parentRole) {
+        return res.status(400).json({ success: false, error: 'Parent role not found in this tenant' });
+      }
+
+    }
+
     const role = await prisma.role.create({
       data: {
         tenantId: req.tenantId!,
         name: data.name,
         description: data.description,
+        parentRoleId: data.parentRoleId || undefined,
         permissionSets: data.permissionSetIds
           ? { create: data.permissionSetIds.map((permissionSetId) => ({ permissionSetId })) }
           : undefined,
@@ -167,6 +188,34 @@ router.put('/:id', authorize('Role', 'edit'), async (req: AuthRequest, res: Resp
 
       if (duplicateRole) {
         return res.status(409).json({ success: false, error: 'Role with this name already exists' });
+      }
+    }
+
+    if (data.parentRoleId === req.params.id) {
+      return res.status(400).json({ success: false, error: 'A role cannot be its own parent' });
+    }
+
+    if (data.parentRoleId) {
+      const parentRole = await prisma.role.findFirst({
+        where: { id: data.parentRoleId, tenantId: req.tenantId! },
+        select: { id: true },
+      });
+      if (!parentRole) {
+        return res.status(400).json({ success: false, error: 'Parent role not found in this tenant' });
+      }
+
+      const descendants = new Set<string>();
+      let pending = [req.params.id];
+      while (pending.length > 0) {
+        const children = await prisma.role.findMany({
+          where: { tenantId: req.tenantId!, parentRoleId: { in: pending } },
+          select: { id: true },
+        });
+        pending = children.map((child) => child.id).filter((id) => !descendants.has(id));
+        pending.forEach((id) => descendants.add(id));
+      }
+      if (descendants.has(data.parentRoleId)) {
+        return res.status(400).json({ success: false, error: 'A role cannot be placed under one of its descendants' });
       }
     }
 
@@ -230,7 +279,15 @@ router.delete('/:id', authorize('Role', 'delete'), async (req: AuthRequest, res:
       return res.status(400).json({ success: false, error: 'Cannot delete system role' });
     }
 
-    const userCount = await prisma.userRole.count({ where: { roleId: req.params.id } });
+    const userCount = await prisma.user.count({
+      where: {
+        tenantId: req.tenantId!,
+        OR: [
+          { roleId: req.params.id },
+          { roles: { some: { roleId: req.params.id } } },
+        ],
+      },
+    });
     if (userCount > 0) {
       return res.status(400).json({ success: false, error: `Cannot delete role assigned to ${userCount} user(s). Reassign users first.` });
     }

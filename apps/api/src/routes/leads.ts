@@ -3,23 +3,41 @@ import { prisma } from '@dct-crm/db';
 import { leadSchema } from '@dct-crm/shared';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize } from '../middleware/authorization';
-import { canTransitionStatus, getAllowedStatuses } from '../services/workflow';
+import { canTransitionStatus, getAllowedStatuses, isValidStatus } from '../services/workflow';
+import { getNextSVCUser, getNextSalesUser } from '../services/roundRobin';
+import { createOwnerHistory, getOwnerHistory } from '../services/ownerHistory';
 
 const router = Router();
 
 router.use(authenticate);
+
+async function getNextLeadNumber(tenantId: string): Promise<string> {
+  const sequence = await prisma.$transaction(async (tx) => {
+    const seq = await tx.sequence.upsert({
+      where: { tenantId_type: { tenantId, type: 'LEAD' } },
+      update: { nextValue: { increment: 1 } },
+      create: { tenantId, type: 'LEAD', nextValue: 1 },
+    });
+    return seq;
+  });
+  return `LN${String(sequence.nextValue).padStart(6, '0')}`;
+}
 
 router.get('/', authorize('Lead', 'read'), async (req: AuthRequest, res: Response) => {
   try {
     const { page = 1, limit = 20, status, source, ownerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = { tenantId: req.tenantId! };
-    if (status) where.status = status;
+    const where: any = {};
+    if (!req.user!.isSuperAdmin) {
+      where.tenantId = req.tenantId!;
+    }
+    if (status && status !== 'All Statuses') where.status = status;
     if (source) where.source = source;
     if (ownerId) where.ownerId = ownerId;
     if (search) {
       where.OR = [
+        { leadNumber: { contains: search as string, mode: 'insensitive' } },
         { firstName: { contains: search as string, mode: 'insensitive' } },
         { lastName: { contains: search as string, mode: 'insensitive' } },
         { email: { contains: search as string, mode: 'insensitive' } },
@@ -82,7 +100,10 @@ router.get('/:id', authorize('Lead', 'read'), async (req: AuthRequest, res: Resp
         creator: { select: { id: true, firstName: true, lastName: true } },
         project: { select: { id: true, name: true } },
         siteVisits: {
-          include: { assignee: { select: { id: true, firstName: true, lastName: true } } },
+          include: {
+            assignee: { select: { id: true, firstName: true, lastName: true } },
+            project: { select: { id: true, name: true } },
+          },
           orderBy: { scheduledAt: 'desc' },
         },
         opportunities: {
@@ -113,7 +134,9 @@ router.get('/:id', authorize('Lead', 'read'), async (req: AuthRequest, res: Resp
       return res.status(404).json({ success: false, error: 'Lead not found' });
     }
 
-    res.json({ success: true, data: lead });
+    const ownerHistory = await getOwnerHistory(req.tenantId!, req.params.id);
+
+    res.json({ success: true, data: { ...lead, ownerHistory } });
   } catch (error) {
     console.error('Get lead error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch lead' });
@@ -124,10 +147,13 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
   try {
     const data = leadSchema.parse(req.body);
 
+    const leadNumber = await getNextLeadNumber(req.tenantId!);
+
     const lead = await prisma.lead.create({
       data: {
         tenantId: req.tenantId!,
         creatorId: req.user!.id,
+        leadNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName,
         salutation: data.salutation || undefined,
@@ -141,7 +167,7 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
         annualRevenue: data.annualRevenue || undefined,
         numberOfEmployees: data.numberOfEmployees || undefined,
         source: data.source,
-        status: data.status || 'NEW',
+        status: 'NEW',
         rating: data.rating || undefined,
         description: data.description || undefined,
         street: data.street || undefined,
@@ -158,6 +184,24 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
         owner: { select: { id: true, firstName: true, lastName: true } },
         project: { select: { id: true, name: true } },
       },
+    });
+
+    const userProfile = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { profile: { select: { name: true } } },
+    });
+
+    await createOwnerHistory({
+      tenantId: req.tenantId!,
+      leadId: lead.id,
+      previousOwnerId: null,
+      newOwnerId: req.user!.id,
+      previousProfile: null,
+      newProfile: userProfile?.profile?.name || null,
+      previousStatus: null,
+      newStatus: 'NEW',
+      handoffReason: 'Lead Created',
+      changedById: req.user!.id,
     });
 
     await prisma.auditLog.create({
@@ -192,7 +236,29 @@ router.put('/:id', authorize('Lead', 'edit'), async (req: AuthRequest, res: Resp
       return res.status(404).json({ success: false, error: 'Lead not found' });
     }
 
-    const data = leadSchema.partial().parse(req.body);
+    const { leadNumber: _ignored, ...bodyData } = req.body;
+    const data = leadSchema.partial().parse(bodyData);
+
+    if (data.status && !isValidStatus(data.status)) {
+      return res.status(400).json({ success: false, error: `Invalid status: ${data.status}` });
+    }
+
+    if (data.status) {
+      const userProfile = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: { profile: { select: { name: true } } },
+      });
+      const profileName = userProfile?.profile?.name || 'Admin';
+
+      if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
+        if (!canTransitionStatus(profileName, existingLead.status, data.status)) {
+          return res.status(403).json({
+            success: false,
+            error: `Profile ${profileName} cannot change status from ${existingLead.status} to ${data.status}`,
+          });
+        }
+      }
+    }
 
     const lead = await prisma.lead.update({
       where: { id: req.params.id },
@@ -282,15 +348,335 @@ router.delete('/:id', authorize('Lead', 'delete'), async (req: AuthRequest, res:
   }
 });
 
+router.post('/:id/push-to-svc', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'Reason/note is required for status change' });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+      include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+    });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    if (lead.status !== 'INCOMING') {
+      return res.status(400).json({ success: false, error: 'Lead must be in Incoming status to push to SVC' });
+    }
+
+    const userProfile = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { profile: { select: { name: true } } },
+    });
+    const profileName = userProfile?.profile?.name || 'Admin';
+
+    if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
+      if (!canTransitionStatus(profileName, 'INCOMING', 'PROSPECT')) {
+        return res.status(403).json({ success: false, error: 'Not authorized to push leads to SVC' });
+      }
+    }
+
+    const svcUser = await getNextSVCUser(req.tenantId!);
+    if (!svcUser) {
+      return res.status(400).json({ success: false, error: 'No eligible SVC users available' });
+    }
+
+    const previousOwner = lead.owner;
+    const previousProfile = profileName;
+
+    const svcUserProfile = await prisma.user.findUnique({
+      where: { id: svcUser.id },
+      select: { profile: { select: { name: true } } },
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedLead = await tx.lead.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'PROSPECT',
+          ownerId: svcUser.id,
+        },
+        include: {
+          owner: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+
+      await createOwnerHistory({
+        tenantId: req.tenantId!,
+        leadId: lead.id,
+        previousOwnerId: lead.ownerId,
+        newOwnerId: svcUser.id,
+        previousProfile,
+        newProfile: svcUserProfile?.profile?.name || null,
+        previousStatus: 'INCOMING',
+        newStatus: 'PROSPECT',
+        handoffReason: reason,
+        changedById: req.user!.id,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: req.user!.id,
+          leadId: lead.id,
+          action: 'PUSH_TO_SVC',
+          objectType: 'Lead',
+          objectId: lead.id,
+          oldValues: { status: 'INCOMING', ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
+          newValues: { status: 'PROSPECT', ownerId: svcUser.id, ownerName: `${svcUser.firstName} ${svcUser.lastName}`, note: reason },
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: svcUser.id,
+          title: 'Lead Assigned to SVC',
+          message: `Lead ${lead.leadNumber} ${lead.firstName ? lead.firstName + ' ' : ''}${lead.lastName} has been assigned to you for site visit coordination.`,
+          type: 'LEAD_ASSIGNMENT',
+          referenceId: lead.id,
+          referenceType: 'Lead',
+        },
+      });
+
+      return updatedLead;
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Push to SVC error:', error);
+    res.status(500).json({ success: false, error: 'Failed to push lead to SVC' });
+  }
+});
+
+router.post('/:id/move-to-recovery', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { recoveryReason, note } = req.body;
+    if (!recoveryReason || !recoveryReason.trim()) {
+      return res.status(400).json({ success: false, error: 'Recovery reason is required' });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+      include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+    });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    if (lead.status !== 'INCOMING' && lead.status !== 'NEW') {
+      return res.status(400).json({ success: false, error: 'Lead must be in New or Incoming status to move to recovery' });
+    }
+
+    const userProfile = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { profile: { select: { name: true } } },
+    });
+    const profileName = userProfile?.profile?.name || 'Admin';
+
+    if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
+      if (!canTransitionStatus(profileName, lead.status, 'LOST')) {
+        return res.status(403).json({ success: false, error: 'Not authorized to move this lead to recovery' });
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedLead = await tx.lead.update({
+        where: { id: req.params.id },
+        data: { status: 'LOST' },
+        include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+      });
+
+      await createOwnerHistory({
+        tenantId: req.tenantId!,
+        leadId: lead.id,
+        previousOwnerId: lead.ownerId,
+        newOwnerId: null,
+        previousProfile: profileName,
+        newProfile: 'Recovery',
+        previousStatus: lead.status,
+        newStatus: 'LOST',
+        handoffReason: recoveryReason,
+        changedById: req.user!.id,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: req.user!.id,
+          leadId: lead.id,
+          action: 'MOVE_TO_RECOVERY',
+          objectType: 'Lead',
+          objectId: lead.id,
+          oldValues: { status: lead.status, ownerId: lead.ownerId },
+          newValues: { status: 'LOST', recoveryReason, recoveryNote: note },
+        },
+      });
+
+      return updatedLead;
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Move to recovery error:', error);
+    res.status(500).json({ success: false, error: 'Failed to move lead to recovery' });
+  }
+});
+
+router.post('/:id/schedule-site-visit', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { scheduledAt, notes, projectId } = req.body;
+
+    if (!projectId || !projectId.trim()) {
+      return res.status(400).json({ success: false, error: 'Project is required for site visit' });
+    }
+    if (!notes || !notes.trim()) {
+      return res.status(400).json({ success: false, error: 'Note/reason is required for site visit' });
+    }
+    if (!scheduledAt) {
+      return res.status(400).json({ success: false, error: 'Visit date/time is required' });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+      include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+    });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    if (lead.status !== 'PROSPECT') {
+      return res.status(400).json({ success: false, error: 'Lead must be in Prospect status to schedule site visit' });
+    }
+
+    const userProfile = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { profile: { select: { name: true } } },
+    });
+    const profileName = userProfile?.profile?.name || 'Admin';
+
+    if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
+      if (!canTransitionStatus(profileName, 'PROSPECT', 'SITE_VISIT_SCHEDULED')) {
+        return res.status(403).json({ success: false, error: 'Not authorized to schedule site visits' });
+      }
+    }
+
+    const salesUser = await getNextSalesUser(req.tenantId!);
+    if (!salesUser) {
+      return res.status(400).json({ success: false, error: 'No eligible Sales users available' });
+    }
+
+    const previousOwner = lead.owner;
+    const salesUserProfile = await prisma.user.findUnique({
+      where: { id: salesUser.id },
+      select: { profile: { select: { name: true } } },
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const siteVisit = await tx.siteVisit.create({
+        data: {
+          tenantId: req.tenantId!,
+          leadId: lead.id,
+          projectId: projectId || undefined,
+          assigneeId: salesUser.id,
+          creatorId: req.user!.id,
+          scheduledAt: new Date(scheduledAt),
+          status: 'SCHEDULED',
+          notes,
+        },
+        include: {
+          assignee: { select: { id: true, firstName: true, lastName: true } },
+          project: { select: { id: true, name: true } },
+        },
+      });
+
+      const updatedLead = await tx.lead.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'SITE_VISIT_SCHEDULED',
+          ownerId: salesUser.id,
+        },
+        include: {
+          owner: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+
+      await createOwnerHistory({
+        tenantId: req.tenantId!,
+        leadId: lead.id,
+        previousOwnerId: lead.ownerId,
+        newOwnerId: salesUser.id,
+        previousProfile: profileName,
+        newProfile: salesUserProfile?.profile?.name || null,
+        previousStatus: 'PROSPECT',
+        newStatus: 'SITE_VISIT_SCHEDULED',
+        handoffReason: notes,
+        changedById: req.user!.id,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: req.user!.id,
+          leadId: lead.id,
+          action: 'SITE_VISIT_SCHEDULED',
+          objectType: 'Lead',
+          objectId: lead.id,
+          oldValues: { status: 'PROSPECT', ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
+          newValues: { status: 'SITE_VISIT_SCHEDULED', ownerId: salesUser.id, ownerName: `${salesUser.firstName} ${salesUser.lastName}`, siteVisitId: siteVisit.id, note: notes },
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: salesUser.id,
+          title: 'Site Visit Scheduled',
+          message: `A site visit has been scheduled for lead ${lead.leadNumber} ${lead.firstName ? lead.firstName + ' ' : ''}${lead.lastName}. You are the assigned sales executive.`,
+          type: 'SITE_VISIT_ASSIGNED',
+          referenceId: lead.id,
+          referenceType: 'Lead',
+        },
+      });
+
+      return { lead: updatedLead, siteVisit };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Schedule site visit error:', error);
+    res.status(500).json({ success: false, error: 'Failed to schedule site visit' });
+  }
+});
+
 router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
   try {
-    const { status } = req.body;
+    const { status, note } = req.body;
+
+    if (!isValidStatus(status)) {
+      return res.status(400).json({ success: false, error: `Invalid status: ${status}` });
+    }
+
+    if (!note || !note.trim()) {
+      return res.status(400).json({ success: false, error: 'A note/reason is required for status change' });
+    }
+
     const lead = await prisma.lead.findFirst({
       where: { id: req.params.id, tenantId: req.tenantId! },
     });
 
     if (!lead) {
       return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    if (lead.status === status) {
+      return res.status(400).json({ success: false, error: `Lead is already in ${status} status` });
     }
 
     const userProfile = await prisma.user.findUnique({
@@ -303,7 +689,7 @@ router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, re
       if (!canTransitionStatus(profileName, lead.status, status)) {
         return res.status(403).json({
           success: false,
-          error: `Your profile (${profileName}) does not have permission to change lead status from ${lead.status} to ${status}`,
+          error: `Profile ${profileName} cannot change status from ${lead.status} to ${status}`,
         });
       }
     }
@@ -322,7 +708,7 @@ router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, re
         objectType: 'Lead',
         objectId: lead.id,
         oldValues: { status: lead.status },
-        newValues: { status },
+        newValues: { status, note },
       },
     });
 
@@ -333,72 +719,37 @@ router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, re
   }
 });
 
-router.post('/:id/recovery', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
-  try {
-    const { recoveryReason, note } = req.body;
-
-    const lead = await prisma.lead.findFirst({
-      where: { id: req.params.id, tenantId: req.tenantId! },
-    });
-
-    if (!lead) {
-      return res.status(404).json({ success: false, error: 'Lead not found' });
-    }
-
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
-
-    if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
-      if (!canTransitionStatus(profileName, lead.status, 'LOST')) {
-        return res.status(403).json({
-          success: false,
-          error: `Your profile (${profileName}) does not have permission to move this lead to recovery`,
-        });
-      }
-    }
-
-    const updatedLead = await prisma.lead.update({
-      where: { id: req.params.id },
-      data: { status: 'LOST' },
-      include: {
-        owner: { select: { id: true, firstName: true, lastName: true } },
-        project: { select: { id: true, name: true } },
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        tenantId: req.tenantId!,
-        userId: req.user!.id,
-        leadId: lead.id,
-        action: 'STATUS_CHANGE',
-        objectType: 'Lead',
-        objectId: lead.id,
-        oldValues: { status: lead.status },
-        newValues: { status: 'LOST', recoveryReason, recoveryNote: note, profile: profileName },
-      },
-    });
-
-    res.json({ success: true, data: updatedLead });
-  } catch (error) {
-    console.error('Recovery lead error:', error);
-    res.status(500).json({ success: false, error: 'Failed to move lead to recovery' });
-  }
-});
-
 router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, res: Response) => {
   try {
     const { ownerId } = req.body;
     const lead = await prisma.lead.findFirst({
       where: { id: req.params.id, tenantId: req.tenantId! },
+      include: { owner: { select: { id: true, firstName: true, lastName: true } } },
     });
 
     if (!lead) {
       return res.status(404).json({ success: false, error: 'Lead not found' });
     }
+
+    if (ownerId) {
+      const targetUser = await prisma.user.findFirst({
+        where: { id: ownerId, tenantId: req.tenantId!, isActive: true },
+        select: { id: true, tenantId: true },
+      });
+      if (!targetUser || targetUser.tenantId !== req.tenantId) {
+        return res.status(400).json({ success: false, error: 'Cannot assign lead to a user from another company' });
+      }
+    }
+
+    const newOwner = ownerId ? await prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { id: true, firstName: true, lastName: true },
+    }) : null;
+
+    const userProfile = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { profile: { select: { name: true } } },
+    });
 
     const updatedLead = await prisma.lead.update({
       where: { id: req.params.id },
@@ -406,6 +757,19 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
       include: {
         owner: { select: { id: true, firstName: true, lastName: true } },
       },
+    });
+
+    await createOwnerHistory({
+      tenantId: req.tenantId!,
+      leadId: lead.id,
+      previousOwnerId: lead.ownerId,
+      newOwnerId: ownerId || null,
+      previousProfile: userProfile?.profile?.name || null,
+      newProfile: null,
+      previousStatus: lead.status,
+      newStatus: lead.status,
+      handoffReason: req.body.reason || 'Manual Assignment',
+      changedById: req.user!.id,
     });
 
     await prisma.auditLog.create({
@@ -416,8 +780,8 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
         action: 'ASSIGN',
         objectType: 'Lead',
         objectId: lead.id,
-        oldValues: { ownerId: lead.ownerId },
-        newValues: { ownerId },
+        oldValues: { ownerId: lead.ownerId, ownerName: lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : null },
+        newValues: { ownerId, ownerName: newOwner ? `${newOwner.firstName} ${newOwner.lastName}` : null },
       },
     });
 
@@ -425,6 +789,24 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
   } catch (error) {
     console.error('Assign lead error:', error);
     res.status(500).json({ success: false, error: 'Failed to assign lead' });
+  }
+});
+
+router.get('/:id/owner-history', authorize('Lead', 'read'), async (req: AuthRequest, res: Response) => {
+  try {
+    const lead = await prisma.lead.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+    });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    const history = await getOwnerHistory(req.tenantId!, req.params.id);
+    res.json({ success: true, data: history });
+  } catch (error) {
+    console.error('Get owner history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch owner history' });
   }
 });
 

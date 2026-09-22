@@ -67,6 +67,19 @@ router.get('/check/:permissionName', async (req: AuthRequest, res: Response) => 
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
+    if (req.user.isSuperAdmin) {
+      return res.json({ success: true, data: { hasPermission: true, permission: req.params.permissionName } });
+    }
+
+    const currentUser = await prisma.user.findFirst({
+      where: { id: req.user.id, tenantId: req.tenantId! },
+      select: { profile: { select: { isAdmin: true } } },
+    });
+
+    if (currentUser?.profile?.isAdmin) {
+      return res.json({ success: true, data: { hasPermission: true, permission: req.params.permissionName } });
+    }
+
     const has = await EffectivePermissionService.hasPermission(req.user.id, req.params.permissionName);
 
     res.json({ success: true, data: { hasPermission: has, permission: req.params.permissionName } });

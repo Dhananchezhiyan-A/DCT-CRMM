@@ -52,12 +52,13 @@ async function checkCapacityLimits(
   return { allowed: true };
 }
 
-const inviteUserSchema = z.object({
+export const inviteUserSchema = z.object({
   email: z.string().email(),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  phone: z.string().optional(),
-  roleIds: z.array(z.string()).min(1),
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().optional().default(''),
+  phone: z.string().trim().optional().transform((value) => value || undefined),
+  roleIds: z.array(z.string()).optional().default([]),
+  roleId: z.string().nullable().optional(),
   password: z.string().min(8).optional(),
   profileId: z.string().optional(),
 });
@@ -68,7 +69,10 @@ const updateUserSchema = z.object({
   phone: z.string().optional(),
   avatar: z.string().optional(),
   profileId: z.string().nullable().optional(),
+  roleId: z.string().nullable().optional(),
 });
+
+const resetPasswordSchema = z.object({ password: z.string().min(8) });
 
 router.get('/', authorize('User', 'read'), async (req: AuthRequest, res: Response) => {
   try {
@@ -208,6 +212,32 @@ router.get('/:id', authorize('User', 'read'), async (req: AuthRequest, res: Resp
   }
 });
 
+router.post('/:id/impersonate', authorize('User', 'edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const administrator = await prisma.user.findFirst({
+      where: { id: req.user!.id, tenantId: req.tenantId! },
+      select: { isSuperAdmin: true, profile: { select: { isAdmin: true } } },
+    });
+    if (!administrator?.isSuperAdmin && !administrator?.profile?.isAdmin) {
+      return res.status(403).json({ success: false, error: 'Only administrators can log in as another user' });
+    }
+
+    const target = await prisma.user.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId!, isActive: true },
+      select: { id: true, email: true, tenantId: true, isSuperAdmin: true, firstName: true, lastName: true },
+    });
+    if (!target) return res.status(404).json({ success: false, error: 'Active user not found' });
+    if (target.id === req.user!.id) return res.status(400).json({ success: false, error: 'You are already logged in as this user' });
+
+    const { generateToken, setAuthCookie } = await import('../middleware/auth');
+    setAuthCookie(res, generateToken({ ...target, impersonatedBy: req.user!.id }));
+    res.json({ success: true, data: { id: target.id, name: `${target.firstName} ${target.lastName}`.trim(), email: target.email } });
+  } catch (error) {
+    console.error('Impersonate user error:', error);
+    res.status(500).json({ success: false, error: 'Failed to log in as user' });
+  }
+});
+
 router.post('/', authorize('User', 'create'), async (req: AuthRequest, res: Response) => {
   try {
     const data = inviteUserSchema.parse(req.body);
@@ -247,6 +277,7 @@ router.post('/', authorize('User', 'create'), async (req: AuthRequest, res: Resp
         phone: data.phone,
         passwordHash,
         profileId: data.profileId || undefined,
+        roleId: data.roleId || undefined,
         roles: {
           create: data.roleIds.map((roleId) => ({ roleId })),
         },
@@ -355,6 +386,24 @@ router.put('/:id', authorize('User', 'edit'), async (req: AuthRequest, res: Resp
     }
     console.error('Update user error:', error);
     res.status(500).json({ success: false, error: 'Failed to update user' });
+  }
+});
+
+router.put('/:id/password', authorize('User', 'edit'), async (req: AuthRequest, res: Response) => {
+  try {
+    const data = resetPasswordSchema.parse(req.body);
+    const existingUser = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.tenantId! } });
+    if (!existingUser) return res.status(404).json({ success: false, error: 'User not found' });
+
+    await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash: await bcrypt.hash(data.password, 12) } });
+    await prisma.auditLog.create({
+      data: { tenantId: req.tenantId!, userId: req.user!.id, action: 'UPDATE', objectType: 'User', objectId: existingUser.id, newValues: { passwordReset: true } },
+    });
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error: any) {
+    if (error.name === 'ZodError') return res.status(400).json({ success: false, error: error.errors[0].message });
+    console.error('Reset password error:', error);
+    res.status(500).json({ success: false, error: 'Failed to reset password' });
   }
 });
 

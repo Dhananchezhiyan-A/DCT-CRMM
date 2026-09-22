@@ -94,6 +94,10 @@ router.post('/', authorize('Activity', 'create'), async (req: AuthRequest, res: 
   try {
     const data = activitySchema.parse(req.body);
 
+    if (data.type === 'NOTE' && (!data.description || !data.description.trim())) {
+      return res.status(400).json({ success: false, error: 'Note content is required' });
+    }
+
     const activity = await prisma.activity.create({
       data: {
         tenantId: req.tenantId!,

@@ -15,113 +15,131 @@ datasource db {
 // ============================================
 
 model Tenant {
-  id            String   @id @default(cuid())
-  name          String
-  slug          String   @unique
-  companyCode   String   @unique
-  domain        String?
-  logo          String?
-  email         String?
-  phone         String?
-  website       String?
-  address       String?
-  city          String?
-  state         String?
-  country       String?
-  postalCode    String?
-  timezone      String?
-  currency      String?
-  description   String?
-  settings      Json?
-  isActive      Boolean  @default(true)
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  companyCode String  @unique
+  domain      String?
+  logo        String?
+  email       String?
+  phone       String?
+  website     String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  postalCode  String?
+  timezone    String?
+  currency    String?
+  description String?
+  settings    Json?
+  isActive    Boolean @default(true)
 
-  maxTotalUsers    Int      @default(10)
-  maxAdminUsers    Int      @default(2)
-  packageName      String?
-  packageStatus    String   @default("active")
-  packageStartDate DateTime?
+  companyStartDate  DateTime?
+  companyExpiryDate DateTime?
+
+  maxTotalUsers     Int       @default(10)
+  maxAdminUsers     Int       @default(2)
+  packageName       String?
+  packageStatus     String    @default("active")
+  packageStartDate  DateTime?
   packageExpiryDate DateTime?
-  packageNotes     String?
+  packageNotes      String?
 
-  createdBy     String?
-  updatedBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users         User[]
-  roles         Role[]
-  profiles      Profile[]
-  permissionSets PermissionSet[]
-  newPermissionSets NewPermissionSet[]
-  queues        Queue[]
-  auditLogs     AuditLog[]
-  reports       Report[]
-  reportFolders ReportFolder[]
-  dashboards    Dashboard[]
-  workflows     Workflow[]
-  automations   Automation[]
-  notifications Notification[]
-  leads         Lead[]
-  contacts      Contact[]
-  accounts      Account[]
-  customers     Customer[]
-  siteVisits    SiteVisit[]
-  opportunities Opportunity[]
-  quotations    Quotation[]
-  approvals     Approval[]
-  bookings      Booking[]
-  payments      Payment[]
-  projects      Project[]
-  units         Unit[]
-  tasks         Task[]
-  followUps     FollowUp[]
-  activities    Activity[]
-  aiConversations AIConversation[]
-  objectDefinitions ObjectDefinition[]
-  customRecords CustomRecord[]
+  users                 User[]
+  roles                 Role[]
+  profiles              Profile[]
+  permissionSets        PermissionSet[]
+  newPermissionSets     NewPermissionSet[]
+  queues                Queue[]
+  auditLogs             AuditLog[]
+  reports               Report[]
+  reportFolders         ReportFolder[]
+  dashboards            Dashboard[]
+  workflows             Workflow[]
+  automations           Automation[]
+  notifications         Notification[]
+  leads                 Lead[]
+  contacts              Contact[]
+  accounts              Account[]
+  customers             Customer[]
+  siteVisits            SiteVisit[]
+  opportunities         Opportunity[]
+  quotations            Quotation[]
+  approvals             Approval[]
+  bookings              Booking[]
+  payments              Payment[]
+  projects              Project[]
+  units                 Unit[]
+  tasks                 Task[]
+  followUps             FollowUp[]
+  activities            Activity[]
+  aiConversations       AIConversation[]
+  objectDefinitions     ObjectDefinition[]
+  customRecords         CustomRecord[]
+  permissionSetGroups   PermissionSetGroup[]
+  objectSharingSettings ObjectSharingSetting[]
+  sharingRules          SharingRule[]
+  recordShares          RecordShare[]
+  recordTeamMembers     RecordTeamMember[]
+  leadOwnerHistories    LeadOwnerHistory[]
+  sequences             Sequence[]
 
   @@index([slug])
   @@index([companyCode])
 }
 
 model User {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  email         String
-  passwordHash  String
-  firstName     String
-  lastName      String
-  phone         String?
-  avatar        String?
-  isActive      Boolean  @default(true)
-  isSuperAdmin  Boolean  @default(false)
-  profileId     String?
-  profile       Profile? @relation(fields: [profileId], references: [id])
-  lastLoginAt   DateTime?
+  id                   String    @id @default(cuid())
+  tenantId             String
+  tenant               Tenant    @relation(fields: [tenantId], references: [id])
+  email                String
+  passwordHash         String
+  firstName            String
+  lastName             String
+  phone                String?
+  avatar               String?
+  isActive             Boolean   @default(true)
+  isSuperAdmin         Boolean   @default(false)
+  profileId            String?
+  profile              Profile?  @relation(fields: [profileId], references: [id])
+  lastLoginAt          DateTime?
   passwordResetToken   String?
   passwordResetExpires DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  roles         UserRole[]
-  assignedLeads Lead[]         @relation("LeadOwner")
-  createdLeads  Lead[]         @relation("LeadCreator")
-  assignedOpportunities Opportunity[] @relation("OppOwner")
-  createdOpportunities Opportunity[] @relation("OppCreator")
-  assignedSiteVisits SiteVisit[] @relation("SvAssignee")
-  createdSiteVisits SiteVisit[] @relation("SvCreator")
-  assignedBookings Booking[] @relation("BookingOwner")
-  createdBookings Booking[] @relation("BookingCreator")
-  tasks         Task[]
-  followUps     FollowUp[]
-  activities    Activity[]
-  aiConversations AIConversation[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
-  ownedCustomRecords CustomRecord[]
+  roles                    UserRole[]
+  roleId                   String?
+  role                     Role?                      @relation("UserPrimaryRole", fields: [roleId], references: [id])
+  assignedLeads            Lead[]                     @relation("LeadOwner")
+  createdLeads             Lead[]                     @relation("LeadCreator")
+  assignedOpportunities    Opportunity[]              @relation("OppOwner")
+  createdOpportunities     Opportunity[]              @relation("OppCreator")
+  assignedSiteVisits       SiteVisit[]                @relation("SvAssignee")
+  createdSiteVisits        SiteVisit[]                @relation("SvCreator")
+  assignedBookings         Booking[]                  @relation("BookingOwner")
+  createdBookings          Booking[]                  @relation("BookingCreator")
+  tasks                    Task[]
+  followUps                FollowUp[]
+  activities               Activity[]
+  aiConversations          AIConversation[]
+  notifications            Notification[]
+  auditLogs                AuditLog[]
+  ownedCustomRecords       CustomRecord[]
   permissionSetAssignments UserPermissionAssignment[]
-  directPermissions UserDirectPermission[]
+  directPermissions        UserDirectPermission[]
+  permissionSetGroups      UserPermissionSetGroup[]
+  recordShares             RecordShare[]
+  teamMemberships          RecordTeamMember[]
+  prevLeadOwnerHistory     LeadOwnerHistory[]         @relation("PrevLeadOwner")
+  newLeadOwnerHistory      LeadOwnerHistory[]         @relation("NewLeadOwner")
+  leadHistoryChanges       LeadOwnerHistory[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -129,19 +147,25 @@ model User {
 }
 
 model Role {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  isSystem      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  users         UserRole[]
-  permissionSets PermissionSetRole[]
-  objectPerms   ObjectPermission[]
-  fieldPerms    FieldPermission[]
+  users            UserRole[]
+  primaryUsers     User[]              @relation("UserPrimaryRole")
+  parentRoleId     String?
+  parentRole       Role?               @relation("RoleHierarchy", fields: [parentRoleId], references: [id])
+  childRoles       Role[]              @relation("RoleHierarchy")
+  permissionSets   PermissionSetRole[]
+  objectPerms      ObjectPermission[]
+  fieldPerms       FieldPermission[]
+  sharingRulesFrom SharingRule[]       @relation("SharingRuleFromRole")
+  sharingRulesTo   SharingRule[]       @relation("SharingRuleToRole")
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -159,39 +183,42 @@ model UserRole {
 }
 
 model Profile {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  isDefault     Boolean  @default(false)
-  isAdmin       Boolean  @default(false)
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  name             String
+  description      String?
+  isDefault        Boolean  @default(false)
+  isAdmin          Boolean  @default(false)
   leadStatusAccess Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  users         User[]
-  permissionSets PermissionSet[]
+  users              User[]
+  permissionSets     PermissionSet[]
   profilePermissions UserProfilePermission[]
+  objectPermissions  ProfileObjectPermission[]
+  fieldPermissions   ProfileFieldPermission[]
+
 
   @@unique([tenantId, name])
   @@index([tenantId])
 }
 
 model PermissionSet {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  profileId     String
-  profile       Profile  @relation(fields: [profileId], references: [id])
-  name          String
-  description   String?
-  objectName    String
-  permissions   Json
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  profileId   String
+  profile     Profile  @relation(fields: [profileId], references: [id])
+  name        String
+  description String?
+  objectName  String
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  roles         PermissionSetRole[]
+  roles PermissionSetRole[]
 
   @@unique([tenantId, profileId, objectName])
   @@index([tenantId])
@@ -224,8 +251,8 @@ model Permission {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  profilePermissions   UserProfilePermission[]
-  permSetItems         NewPermissionSetItem[]
+  profilePermissions    UserProfilePermission[]
+  permSetItems          NewPermissionSetItem[]
   directUserPermissions UserDirectPermission[]
 
   @@index([module])
@@ -242,20 +269,23 @@ model NewPermissionSet {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  items       NewPermissionSetItem[]
-  userAssignments UserPermissionAssignment[]
+  items             NewPermissionSetItem[]
+  userAssignments   UserPermissionAssignment[]
+  objectPermissions PermissionSetObjectPermission[]
+  fieldPermissions  PermissionSetFieldPermission[]
+  groupItems        PermissionSetGroupItem[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
 }
 
 model NewPermissionSetItem {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   permissionSetId String
-  permissionSet   NewPermissionSet  @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
+  permissionSet   NewPermissionSet @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
   permissionId    String
-  permission      Permission        @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  createdAt       DateTime          @default(now())
+  permission      Permission       @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
 
   @@unique([permissionSetId, permissionId])
   @@index([permissionSetId])
@@ -263,12 +293,12 @@ model NewPermissionSetItem {
 }
 
 model UserProfilePermission {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   profileId    String
-  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile      Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
   permissionId String
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 
   @@unique([profileId, permissionId])
   @@index([profileId])
@@ -276,12 +306,12 @@ model UserProfilePermission {
 }
 
 model UserPermissionAssignment {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   userId          String
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   permissionSetId String
-  permissionSet   NewPermissionSet  @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
-  createdAt       DateTime          @default(now())
+  permissionSet   NewPermissionSet @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
 
   @@unique([userId, permissionSetId])
   @@index([userId])
@@ -289,28 +319,146 @@ model UserPermissionAssignment {
 }
 
 model UserDirectPermission {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   permissionId String
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 
   @@unique([userId, permissionId])
   @@index([userId])
   @@index([permissionId])
 }
 
+model ProfileObjectPermission {
+  id        String           @id @default(cuid())
+  tenantId  String
+  profileId String
+  profile   Profile          @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  objectId  String
+  object    ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  canCreate Boolean          @default(false)
+  canRead   Boolean          @default(false)
+  canUpdate Boolean          @default(false)
+  canDelete Boolean          @default(false)
+  viewAll   Boolean          @default(false)
+  modifyAll Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([profileId, objectId])
+  @@index([tenantId])
+  @@index([profileId])
+  @@index([objectId])
+}
+
+model ProfileFieldPermission {
+  id        String          @id @default(cuid())
+  tenantId  String
+  profileId String
+  profile   Profile         @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  fieldId   String
+  field     FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  canRead   Boolean         @default(true)
+  canEdit   Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([profileId, fieldId])
+  @@index([tenantId])
+  @@index([profileId])
+  @@index([fieldId])
+}
+
+model PermissionSetObjectPermission {
+  id              String           @id @default(cuid())
+  permissionSetId String
+  permissionSet   NewPermissionSet @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
+  objectId        String
+  object          ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  canCreate       Boolean          @default(false)
+  canRead         Boolean          @default(false)
+  canUpdate       Boolean          @default(false)
+  canDelete       Boolean          @default(false)
+  viewAll         Boolean          @default(false)
+  modifyAll       Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([permissionSetId, objectId])
+  @@index([permissionSetId])
+  @@index([objectId])
+}
+
+model PermissionSetFieldPermission {
+  id              String           @id @default(cuid())
+  permissionSetId String
+  permissionSet   NewPermissionSet @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
+  fieldId         String
+  field           FieldDefinition  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  canRead         Boolean          @default(true)
+  canEdit         Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([permissionSetId, fieldId])
+  @@index([permissionSetId])
+  @@index([fieldId])
+}
+
+model PermissionSetGroup {
+  id          String                   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isActive    Boolean                  @default(true)
+  assignments PermissionSetGroupItem[]
+  users       UserPermissionSetGroup[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model PermissionSetGroupItem {
+  id              String             @id @default(cuid())
+  groupId         String
+  group           PermissionSetGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permissionSetId String
+  permissionSet   NewPermissionSet   @relation(fields: [permissionSetId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+
+  @@unique([groupId, permissionSetId])
+  @@index([groupId])
+  @@index([permissionSetId])
+}
+
+model UserPermissionSetGroup {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     PermissionSetGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+}
+
 model Queue {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  type          String
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  type        String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   leads         Lead[]
   opportunities Opportunity[]
@@ -319,6 +467,89 @@ model Queue {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+}
+
+enum SharingModel {
+  PRIVATE
+  PUBLIC_READ_ONLY
+  PUBLIC_READ_WRITE
+}
+
+enum SharingAccessLevel {
+  READ
+  EDIT
+}
+
+model ObjectSharingSetting {
+  id           String           @id @default(cuid())
+  tenantId     String
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  objectId     String
+  object       ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  sharingModel SharingModel     @default(PRIVATE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([tenantId, objectId])
+  @@index([tenantId])
+  @@index([objectId])
+}
+
+model SharingRule {
+  id          String             @id @default(cuid())
+  tenantId    String
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  objectName  String
+  fromRoleId  String?
+  fromRole    Role?              @relation("SharingRuleFromRole", fields: [fromRoleId], references: [id])
+  toRoleId    String?
+  toRole      Role?              @relation("SharingRuleToRole", fields: [toRoleId], references: [id])
+  accessLevel SharingAccessLevel @default(READ)
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([objectName])
+  @@index([fromRoleId])
+  @@index([toRoleId])
+}
+
+model RecordShare {
+  id          String             @id @default(cuid())
+  tenantId    String
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectName  String
+  recordId    String
+  accessLevel SharingAccessLevel @default(READ)
+  reason      String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([userId, objectName, recordId])
+  @@index([tenantId, objectName, recordId])
+  @@index([userId])
+}
+
+model RecordTeamMember {
+  id          String             @id @default(cuid())
+  tenantId    String
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectName  String
+  recordId    String
+  role        String?
+  accessLevel SharingAccessLevel @default(READ)
+  createdAt   DateTime           @default(now())
+
+  @@unique([userId, objectName, recordId])
+  @@index([tenantId, objectName, recordId])
+  @@index([userId])
 }
 
 // ============================================
@@ -388,32 +619,33 @@ enum Rating {
 }
 
 model Lead {
-  id            String     @id @default(cuid())
-  tenantId      String
-  tenant        Tenant     @relation(fields: [tenantId], references: [id])
-  ownerId       String?
-  owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id])
-  creatorId     String
-  creator       User       @relation("LeadCreator", fields: [creatorId], references: [id])
-  queueId       String?
-  queue         Queue?     @relation(fields: [queueId], references: [id])
-  projectId     String?
-  project       Project?   @relation(fields: [projectId], references: [id])
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  ownerId    String?
+  owner      User?    @relation("LeadOwner", fields: [ownerId], references: [id])
+  creatorId  String
+  creator    User     @relation("LeadCreator", fields: [creatorId], references: [id])
+  leadNumber String?
+  queueId    String?
+  queue      Queue?   @relation(fields: [queueId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
 
   // Standard Lead Fields - Contact Information
-  salutation   Salutation?
-  firstName    String?
-  lastName     String
-  title        String?
-  email        String?
-  phone        String?
-  mobile       String?
-  website      String?
+  salutation Salutation?
+  firstName  String?
+  lastName   String
+  title      String?
+  email      String?
+  phone      String?
+  mobile     String?
+  website    String?
 
   // Standard Lead Fields - Company Information
-  company      String
-  industry     Industry?
-  annualRevenue Float?
+  company           String
+  industry          Industry?
+  annualRevenue     Float?
   numberOfEmployees Int?
 
   // Standard Lead Fields - Lead Management
@@ -427,19 +659,19 @@ model Lead {
   notes        String?
 
   // Standard Lead Fields - Address
-  street       String?
-  city         String?
+  street        String?
+  city          String?
   stateProvince String?
-  country      String?
-  postalCode   String?
+  country       String?
+  postalCode    String?
 
   // Duplicate detection
   duplicateOfId String?
-  duplicateOf   Lead?      @relation("LeadDuplicates", fields: [duplicateOfId], references: [id])
-  duplicates    Lead[]     @relation("LeadDuplicates")
+  duplicateOf   Lead?   @relation("LeadDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates    Lead[]  @relation("LeadDuplicates")
 
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   contacts      Contact[]
   customer      Customer?
@@ -451,6 +683,7 @@ model Lead {
   followUps     FollowUp[]
   activities    Activity[]
   auditLogs     AuditLog[]
+  ownerHistory  LeadOwnerHistory[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -458,27 +691,28 @@ model Lead {
   @@index([tenantId, phone])
   @@index([tenantId, email])
   @@index([tenantId, company])
+  @@unique([tenantId, leadNumber])
 }
 
 model Contact {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  leadId        String?
-  lead          Lead?    @relation(fields: [leadId], references: [id])
-  accountId     String?
-  account       Account? @relation(fields: [accountId], references: [id])
-  
-  firstName     String
-  lastName      String?
-  email         String?
-  phone         String
-  title         String?
-  department    String?
-  isPrimary     Boolean  @default(false)
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  firstName  String
+  lastName   String?
+  email      String?
+  phone      String
+  title      String?
+  department String?
+  isPrimary  Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([tenantId])
   @@index([leadId])
@@ -486,45 +720,45 @@ model Contact {
 }
 
 model Account {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  name          String
-  industry      String?
-  website       String?
-  phone         String?
-  email         String?
-  address       String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  industry  String?
+  website   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  contacts      Contact[]
-  customers     Customer[]
+  contacts  Contact[]
+  customers Customer[]
 
   @@index([tenantId])
 }
 
 model Customer {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  leadId        String?  @unique
-  lead          Lead?    @relation(fields: [leadId], references: [id])
-  accountId     String?
-  account       Account? @relation(fields: [accountId], references: [id])
-  
-  firstName     String
-  lastName      String?
-  email         String?
-  phone         String
-  address       String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  leadId    String?  @unique
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
 
-  bookings      Booking[]
-  payments      Payment[]
+  firstName String
+  lastName  String?
+  email     String?
+  phone     String
+  address   String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+  payments Payment[]
 
   @@index([tenantId])
   @@index([leadId])
@@ -544,31 +778,31 @@ enum SiteVisitStatus {
 }
 
 model SiteVisit {
-  id            String           @id @default(cuid())
-  tenantId      String
-  tenant        Tenant           @relation(fields: [tenantId], references: [id])
-  leadId        String
-  lead          Lead             @relation(fields: [leadId], references: [id])
-  projectId     String?
-  project       Project?         @relation(fields: [projectId], references: [id])
-  assigneeId    String?
-  assignee      User?            @relation("SvAssignee", fields: [assigneeId], references: [id])
-  creatorId     String
-  creator       User             @relation("SvCreator", fields: [creatorId], references: [id])
-  queueId       String?
-  queue         Queue?           @relation(fields: [queueId], references: [id])
-  
-  scheduledAt  DateTime
-  completedAt  DateTime?
-  status       SiteVisitStatus  @default(SCHEDULED)
-  feedback     String?
-  rating       Int?
-  notes        String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+  assigneeId String?
+  assignee   User?    @relation("SvAssignee", fields: [assigneeId], references: [id])
+  creatorId  String
+  creator    User     @relation("SvCreator", fields: [creatorId], references: [id])
+  queueId    String?
+  queue      Queue?   @relation(fields: [queueId], references: [id])
 
-  activities   Activity[]
-  tasks        Task[]
+  scheduledAt DateTime
+  completedAt DateTime?
+  status      SiteVisitStatus @default(SCHEDULED)
+  feedback    String?
+  rating      Int?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  activities Activity[]
+  tasks      Task[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -591,35 +825,35 @@ enum OpportunityStage {
 }
 
 model Opportunity {
-  id            String           @id @default(cuid())
-  tenantId      String
-  tenant        Tenant           @relation(fields: [tenantId], references: [id])
-  leadId        String?
-  lead          Lead?            @relation(fields: [leadId], references: [id])
-  ownerId       String?
-  owner         User?            @relation("OppOwner", fields: [ownerId], references: [id])
-  creatorId     String
-  creator       User             @relation("OppCreator", fields: [creatorId], references: [id])
-  queueId       String?
-  queue         Queue?           @relation(fields: [queueId], references: [id])
-  projectId     String?
-  project       Project?         @relation(fields: [projectId], references: [id])
-  
-  name          String
-  stage         OpportunityStage @default(PROSPECTING)
-  amount        Float?
-  expectedCloseDate DateTime?
-  probability   Int?
-  description   String?
-  lostReason    String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  ownerId   String?
+  owner     User?    @relation("OppOwner", fields: [ownerId], references: [id])
+  creatorId String
+  creator   User     @relation("OppCreator", fields: [creatorId], references: [id])
+  queueId   String?
+  queue     Queue?   @relation(fields: [queueId], references: [id])
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
 
-  quotations    Quotation[]
-  bookings      Booking[]
-  activities    Activity[]
-  tasks         Task[]
-  auditLogs     AuditLog[]
+  name              String
+  stage             OpportunityStage @default(PROSPECTING)
+  amount            Float?
+  expectedCloseDate DateTime?
+  probability       Int?
+  description       String?
+  lostReason        String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  quotations Quotation[]
+  bookings   Booking[]
+  activities Activity[]
+  tasks      Task[]
+  auditLogs  AuditLog[]
 
   @@index([tenantId])
   @@index([tenantId, stage])
@@ -639,29 +873,29 @@ enum QuotationStatus {
 }
 
 model Quotation {
-  id            String           @id @default(cuid())
+  id            String       @id @default(cuid())
   tenantId      String
-  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
   leadId        String?
-  lead          Lead?            @relation(fields: [leadId], references: [id])
+  lead          Lead?        @relation(fields: [leadId], references: [id])
   opportunityId String?
-  opportunity   Opportunity?     @relation(fields: [opportunityId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
   projectId     String?
-  project       Project?         @relation(fields: [projectId], references: [id])
-  
-  number        String
-  status        QuotationStatus  @default(DRAFT)
-  totalAmount   Float
-  taxAmount     Float?
-  discount      Float?
-  validUntil    DateTime?
-  notes         String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  project       Project?     @relation(fields: [projectId], references: [id])
 
-  items         QuotationItem[]
-  approvals     Approval[]
-  bookings      Booking[]
+  number      String
+  status      QuotationStatus @default(DRAFT)
+  totalAmount Float
+  taxAmount   Float?
+  discount    Float?
+  validUntil  DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  items     QuotationItem[]
+  approvals Approval[]
+  bookings  Booking[]
 
   @@unique([tenantId, number])
   @@index([tenantId])
@@ -669,17 +903,17 @@ model Quotation {
 }
 
 model QuotationItem {
-  id            String      @id @default(cuid())
-  quotationId   String
-  quotation     Quotation   @relation(fields: [quotationId], references: [id])
-  unitId        String?
-  unit          Unit?       @relation(fields: [unitId], references: [id])
-  description   String
-  quantity      Int         @default(1)
-  unitPrice     Float
-  totalPrice    Float
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  unitId      String?
+  unit        Unit?     @relation(fields: [unitId], references: [id])
+  description String
+  quantity    Int       @default(1)
+  unitPrice   Float
+  totalPrice  Float
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([quotationId])
 }
@@ -691,16 +925,16 @@ enum ApprovalStatus {
 }
 
 model Approval {
-  id            String         @id @default(cuid())
-  tenantId      String
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  quotationId   String
-  quotation     Quotation      @relation(fields: [quotationId], references: [id])
-  approverId    String
-  status        ApprovalStatus @default(PENDING)
-  comments      String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id          String         @id @default(cuid())
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  quotationId String
+  quotation   Quotation      @relation(fields: [quotationId], references: [id])
+  approverId  String
+  status      ApprovalStatus @default(PENDING)
+  comments    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@index([tenantId])
   @@index([quotationId])
@@ -719,39 +953,39 @@ enum BookingStatus {
 }
 
 model Booking {
-  id            String         @id @default(cuid())
+  id            String       @id @default(cuid())
   tenantId      String
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
   leadId        String?
-  lead          Lead?          @relation(fields: [leadId], references: [id])
+  lead          Lead?        @relation(fields: [leadId], references: [id])
   opportunityId String?
-  opportunity   Opportunity?   @relation(fields: [opportunityId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
   quotationId   String?
-  quotation     Quotation?     @relation(fields: [quotationId], references: [id])
+  quotation     Quotation?   @relation(fields: [quotationId], references: [id])
   projectId     String
-  project       Project        @relation(fields: [projectId], references: [id])
+  project       Project      @relation(fields: [projectId], references: [id])
   unitId        String
-  unit          Unit           @relation(fields: [unitId], references: [id])
+  unit          Unit         @relation(fields: [unitId], references: [id])
   customerId    String?
-  customer      Customer?      @relation(fields: [customerId], references: [id])
+  customer      Customer?    @relation(fields: [customerId], references: [id])
   ownerId       String?
-  owner         User?          @relation("BookingOwner", fields: [ownerId], references: [id])
+  owner         User?        @relation("BookingOwner", fields: [ownerId], references: [id])
   creatorId     String
-  creator       User           @relation("BookingCreator", fields: [creatorId], references: [id])
+  creator       User         @relation("BookingCreator", fields: [creatorId], references: [id])
   queueId       String?
-  queue         Queue?         @relation(fields: [queueId], references: [id])
-  
-  number        String
-  status        BookingStatus  @default(PENDING)
-  bookingDate   DateTime       @default(now())
-  totalAmount   Float
-  notes         String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  queue         Queue?       @relation(fields: [queueId], references: [id])
 
-  payments      Payment[]
-  activities    Activity[]
-  auditLogs     AuditLog[]
+  number      String
+  status      BookingStatus @default(PENDING)
+  bookingDate DateTime      @default(now())
+  totalAmount Float
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  payments   Payment[]
+  activities Activity[]
+  auditLogs  AuditLog[]
 
   @@unique([tenantId, number])
   @@index([tenantId])
@@ -768,22 +1002,22 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id            String        @id @default(cuid())
-  tenantId      String
-  tenant        Tenant        @relation(fields: [tenantId], references: [id])
-  bookingId     String
-  booking       Booking       @relation(fields: [bookingId], references: [id])
-  customerId    String?
-  customer      Customer?     @relation(fields: [customerId], references: [id])
-  
-  amount        Float
-  status        PaymentStatus @default(PENDING)
-  paymentDate   DateTime      @default(now())
-  reference     String?
-  notes         String?
-  verifiedAt    DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  bookingId  String
+  booking    Booking   @relation(fields: [bookingId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  amount      Float
+  status      PaymentStatus @default(PENDING)
+  paymentDate DateTime      @default(now())
+  reference   String?
+  notes       String?
+  verifiedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -804,19 +1038,19 @@ enum UnitStatus {
 }
 
 model Project {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  address       String?
-  city          String?
-  state         String?
-  zipCode       String?
-  totalUnits    Int?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  totalUnits  Int?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   units         Unit[]
   leads         Lead[]
@@ -830,22 +1064,22 @@ model Project {
 }
 
 model Unit {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  projectId     String
-  project       Project   @relation(fields: [projectId], references: [id])
-  number        String
-  type          String?
-  floor         Int?
-  area          Float?
-  price         Float?
-  status        UnitStatus @default(AVAILABLE)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id])
+  number    String
+  type      String?
+  floor     Int?
+  area      Float?
+  price     Float?
+  status    UnitStatus @default(AVAILABLE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   quotationItems QuotationItem[]
-  bookings      Booking[]
+  bookings       Booking[]
 
   @@unique([tenantId, projectId, number])
   @@index([tenantId])
@@ -883,15 +1117,15 @@ model Task {
   opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
   ownerId       String
   owner         User         @relation(fields: [ownerId], references: [id])
-  
-  title         String
-  description   String?
-  status        TaskStatus   @default(PENDING)
-  priority      TaskPriority @default(MEDIUM)
-  dueDate       DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+
+  title       String
+  description String?
+  status      TaskStatus   @default(PENDING)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, ownerId])
@@ -900,21 +1134,21 @@ model Task {
 }
 
 model FollowUp {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  leadId        String?
-  lead          Lead?     @relation(fields: [leadId], references: [id])
-  ownerId       String
-  owner         User      @relation(fields: [ownerId], references: [id])
-  
-  title         String
-  description   String?
-  dueDate       DateTime
-  completedAt   DateTime?
-  isCompleted   Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id       String  @id @default(cuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  leadId   String?
+  lead     Lead?   @relation(fields: [leadId], references: [id])
+  ownerId  String
+  owner    User    @relation(fields: [ownerId], references: [id])
+
+  title       String
+  description String?
+  dueDate     DateTime
+  completedAt DateTime?
+  isCompleted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, ownerId])
@@ -951,14 +1185,14 @@ model Activity {
   booking       Booking?     @relation(fields: [bookingId], references: [id])
   userId        String
   user          User         @relation(fields: [userId], references: [id])
-  
-  type          ActivityType
-  subject       String
-  description   String?
-  dueDate       DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+
+  type        ActivityType
+  subject     String
+  description String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, userId])
@@ -969,19 +1203,19 @@ model Activity {
 }
 
 model Notification {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
+
   title         String
   message       String
   type          String
   referenceId   String?
   referenceType String?
-  isRead        Boolean   @default(false)
-  createdAt     DateTime  @default(now())
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
   @@index([tenantId, userId])
   @@index([tenantId, userId, isRead])
@@ -992,35 +1226,35 @@ model Notification {
 // ============================================
 
 model Workflow {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
   name          String
   description   String?
   triggerType   String
   triggerObject String
   conditions    Json
   actions       Json
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@index([tenantId])
 }
 
 model Automation {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  triggerEvent  String
-  conditions    Json
-  actions       Json
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  name         String
+  description  String?
+  triggerEvent String
+  conditions   Json
+  actions      Json
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1031,40 +1265,40 @@ model Automation {
 // ============================================
 
 model ReportFolder {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  isShared      Boolean   @default(false)
-  createdBy     String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  isShared    Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  reports       Report[]
+  reports Report[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
 }
 
 model Report {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  folderId      String?
-  folder        ReportFolder? @relation(fields: [folderId], references: [id])
-  name          String
-  description   String?
-  type          String
-  objectName    String
-  columns       Json
-  filters       Json?
-  groupBy       String?
-  sortBy        String?
-  isShared      Boolean   @default(false)
-  createdBy     String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  folderId    String?
+  folder      ReportFolder? @relation(fields: [folderId], references: [id])
+  name        String
+  description String?
+  type        String
+  objectName  String
+  columns     Json
+  filters     Json?
+  groupBy     String?
+  sortBy      String?
+  isShared    Boolean       @default(false)
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1072,16 +1306,16 @@ model Report {
 }
 
 model Dashboard {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  name          String
-  description   String?
-  layout        Json
-  isDefault     Boolean   @default(false)
-  createdBy     String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  layout      Json
+  isDefault   Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -1092,26 +1326,26 @@ model Dashboard {
 // ============================================
 
 model AuditLog {
-  id            String    @id @default(cuid())
+  id            String       @id @default(cuid())
   tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
   userId        String?
-  user          User?     @relation(fields: [userId], references: [id])
+  user          User?        @relation(fields: [userId], references: [id])
   leadId        String?
-  lead          Lead?     @relation(fields: [leadId], references: [id])
+  lead          Lead?        @relation(fields: [leadId], references: [id])
   opportunityId String?
   opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
   bookingId     String?
-  booking       Booking?  @relation(fields: [bookingId], references: [id])
-  
-  action        String
-  objectType    String
-  objectId      String?
-  oldValues     Json?
-  newValues     Json?
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime  @default(now())
+  booking       Booking?     @relation(fields: [bookingId], references: [id])
+
+  action     String
+  objectType String
+  objectId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
 
   @@index([tenantId])
   @@index([tenantId, userId])
@@ -1120,31 +1354,31 @@ model AuditLog {
 }
 
 model AIConversation {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  
-  title         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
 
-  messages      AIMessage[]
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AIMessage[]
 
   @@index([tenantId, userId])
 }
 
 model AIMessage {
-  id              String         @id @default(cuid())
-  conversationId  String
-  conversation    AIConversation @relation(fields: [conversationId], references: [id])
-  
-  role            String
-  content         String
-  toolCalls       Json?
-  toolResults     Json?
-  createdAt       DateTime       @default(now())
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id])
+
+  role        String
+  content     String
+  toolCalls   Json?
+  toolResults Json?
+  createdAt   DateTime @default(now())
 
   @@index([conversationId])
 }
@@ -1154,28 +1388,33 @@ model AIMessage {
 // ============================================
 
 model ObjectDefinition {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  
-  name          String
-  label         String
-  pluralLabel   String
-  description   String?
-  icon          String?
-  objectType    String   @default("custom")
-  isActive      Boolean  @default(true)
-  
-  createdBy     String
-  createdAt     DateTime @default(now())
-  updatedBy     String?
-  updatedAt     DateTime @updatedAt
-  
-  fields        FieldDefinition[]
-  layouts       PageLayout[]
-  objectPerms   ObjectPermission[]
-  records       CustomRecord[]
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name                    String
+  label                   String
+  pluralLabel             String
+  description             String?
+  icon                    String?
+  objectType              String  @default("custom")
+  isActive                Boolean @default(true)
+  isAvailableInNavigation Boolean @default(true)
+  isAvailableInReports    Boolean @default(true)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  fields                         FieldDefinition[]
+  layouts                        PageLayout[]
+  objectPerms                    ObjectPermission[]
+  profileObjectPermissions       ProfileObjectPermission[]
+  permissionSetObjectPermissions PermissionSetObjectPermission[]
+  sharingSettings                ObjectSharingSetting[]
+  records                        CustomRecord[]
+
   @@unique([tenantId, name])
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -1186,54 +1425,56 @@ model ObjectDefinition {
 // ============================================
 
 model FieldDefinition {
-  id            String   @id @default(cuid())
-  tenantId      String
-  objectId      String
-  object        ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
-  name          String
-  label         String
-  fieldType     String
-  description   String?
-  helpText      String?
-  
-  required      Boolean  @default(false)
-  unique        Boolean  @default(false)
-  defaultValue  String?
-  
-  searchable    Boolean  @default(false)
-  sortable      Boolean  @default(false)
-  filterable    Boolean  @default(false)
-  
-  visible       Boolean  @default(true)
-  editable      Boolean  @default(true)
-  isActive      Boolean  @default(true)
-  isSystemField Boolean  @default(false)
-  isCustomField Boolean  @default(true)
+  id       String           @id @default(cuid())
+  tenantId String
+  objectId String
+  object   ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  name        String
+  label       String
+  fieldType   String
+  description String?
+  helpText    String?
+
+  required     Boolean @default(false)
+  unique       Boolean @default(false)
+  defaultValue String?
+
+  searchable Boolean @default(false)
+  sortable   Boolean @default(false)
+  filterable Boolean @default(false)
+
+  visible         Boolean @default(true)
+  editable        Boolean @default(true)
+  isActive        Boolean @default(true)
+  isSystemField   Boolean @default(false)
+  isCustomField   Boolean @default(true)
   isStandardField Boolean @default(false)
-  
-  displayOrder  Int      @default(0)
-  
-  minLength     Int?
-  maxLength     Int?
-  minValue      Float?
-  maxValue      Float?
-  precision     Int?
-  scale         Int?
-  
-  lookupObject  String?
-  lookupField   String?
-  
+
+  displayOrder Int @default(0)
+
+  minLength Int?
+  maxLength Int?
+  minValue  Float?
+  maxValue  Float?
+  precision Int?
+  scale     Int?
+
+  lookupObject String?
+  lookupField  String?
+
   validationRules Json?
-  
-  createdBy     String
-  createdAt     DateTime @default(now())
-  updatedBy     String?
-  updatedAt     DateTime @updatedAt
-  
-  picklistValues PicklistValue[]
-  fieldPerms    FieldPermission[]
-  
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  picklistValues                PicklistValue[]
+  fieldPerms                    FieldPermission[]
+  profileFieldPermissions       ProfileFieldPermission[]
+  permissionSetFieldPermissions PermissionSetFieldPermission[]
+
   @@unique([objectId, name])
   @@index([objectId])
   @@index([tenantId])
@@ -1244,19 +1485,19 @@ model FieldDefinition {
 // ============================================
 
 model PicklistValue {
-  id            String   @id @default(cuid())
-  tenantId      String
-  fieldId       String
-  field         FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  
-  label         String
-  value         String
-  isActive      Boolean  @default(true)
-  isDefault     Boolean  @default(false)
-  displayOrder  Int      @default(0)
-  
-  createdAt     DateTime @default(now())
-  
+  id       String          @id @default(cuid())
+  tenantId String
+  fieldId  String
+  field    FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  label        String
+  value        String
+  isActive     Boolean @default(true)
+  isDefault    Boolean @default(false)
+  displayOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+
   @@unique([fieldId, value])
   @@index([fieldId])
 }
@@ -1266,20 +1507,20 @@ model PicklistValue {
 // ============================================
 
 model PageLayout {
-  id            String   @id @default(cuid())
-  tenantId      String
-  objectId      String
-  object        ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
-  name          String
-  isDefault     Boolean  @default(false)
-  sections      Json
-  
-  createdBy     String
-  createdAt     DateTime @default(now())
-  updatedBy     String?
-  updatedAt     DateTime @updatedAt
-  
+  id       String           @id @default(cuid())
+  tenantId String
+  objectId String
+  object   ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  name      String
+  isDefault Boolean @default(false)
+  sections  Json
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
   @@unique([objectId, name])
   @@index([objectId])
 }
@@ -1289,23 +1530,23 @@ model PageLayout {
 // ============================================
 
 model ObjectPermission {
-  id            String   @id @default(cuid())
-  tenantId      String
-  roleId        String
-  role          Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  objectId      String
-  object        ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
-  canCreate     Boolean  @default(false)
-  canRead       Boolean  @default(false)
-  canUpdate     Boolean  @default(false)
-  canDelete     Boolean  @default(false)
-  viewAll       Boolean  @default(false)
-  modifyAll     Boolean  @default(false)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  id       String           @id @default(cuid())
+  tenantId String
+  roleId   String
+  role     Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  objectId String
+  object   ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  canCreate Boolean @default(false)
+  canRead   Boolean @default(false)
+  canUpdate Boolean @default(false)
+  canDelete Boolean @default(false)
+  viewAll   Boolean @default(false)
+  modifyAll Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([roleId, objectId])
   @@index([roleId])
   @@index([objectId])
@@ -1316,19 +1557,19 @@ model ObjectPermission {
 // ============================================
 
 model FieldPermission {
-  id            String   @id @default(cuid())
-  tenantId      String
-  roleId        String
-  role          Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  fieldId       String
-  field         FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  
-  canRead       Boolean  @default(true)
-  canEdit       Boolean  @default(true)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  id       String          @id @default(cuid())
+  tenantId String
+  roleId   String
+  role     Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  fieldId  String
+  field    FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  canRead Boolean @default(true)
+  canEdit Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([roleId, fieldId])
   @@index([roleId])
   @@index([fieldId])
@@ -1339,26 +1580,72 @@ model FieldPermission {
 // ============================================
 
 model CustomRecord {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  objectId      String
-  object        ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
-  
-  recordNumber  String?
-  ownerId       String?
-  owner         User?    @relation(fields: [ownerId], references: [id])
-  
-  data          Json
-  isActive      Boolean  @default(true)
-  
-  createdBy     String
-  createdAt     DateTime @default(now())
-  updatedBy     String?
-  updatedAt     DateTime @updatedAt
-  
+  id       String           @id @default(cuid())
+  tenantId String
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  objectId String
+  object   ObjectDefinition @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  recordNumber String?
+  ownerId      String?
+  owner        User?   @relation(fields: [ownerId], references: [id])
+
+  data     Json
+  isActive Boolean @default(true)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
   @@unique([tenantId, objectId, recordNumber])
   @@index([tenantId, objectId])
   @@index([tenantId, ownerId])
   @@index([objectId])
+}
+
+// ============================================
+// SEQUENCES
+// ============================================
+
+model Sequence {
+  id        String @id @default(cuid())
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  type      String
+  nextValue Int    @default(1)
+
+  @@unique([tenantId, type])
+  @@index([tenantId])
+}
+
+// ============================================
+// LEAD OWNER HISTORY
+// ============================================
+
+model LeadOwnerHistory {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  leadId            String
+  lead              Lead      @relation(fields: [leadId], references: [id])
+  previousOwnerId   String?
+  previousOwner     User?     @relation("PrevLeadOwner", fields: [previousOwnerId], references: [id])
+  newOwnerId        String?
+  newOwner          User?     @relation("NewLeadOwner", fields: [newOwnerId], references: [id])
+  previousProfile   String?
+  newProfile        String?
+  previousStatus    String?
+  newStatus         String?
+  handoffReason     String?
+  changedById       String
+  changedBy         User      @relation(fields: [changedById], references: [id])
+  startDate         DateTime  @default(now())
+  endDate           DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([newOwnerId])
+  @@index([previousOwnerId])
 }

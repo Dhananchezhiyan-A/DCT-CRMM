@@ -14,6 +14,7 @@ import {
   getUserObjectPermissions,
   getUserFieldPermissions,
   getObjectDefinition,
+  getRoleHierarchyUserIds,
 } from '../services/metadata';
 
 const router = Router();
@@ -36,6 +37,15 @@ async function checkObjectPermission(req: AuthRequest, objectName: string, actio
     case 'delete': return permissions.canDelete || permissions.modifyAll;
     default: return false;
   }
+}
+
+async function canAccessOwnedRecord(req: AuthRequest, objectName: string, ownerId: string | null, action: 'read' | 'update' | 'delete') {
+  const permissions = await getUserObjectPermissions(req.tenantId!, req.user!.id, objectName);
+  if (!permissions) return true;
+  if (permissions.modifyAll || (permissions.viewAll && action === 'read')) return true;
+
+  const visibleUserIds = await getRoleHierarchyUserIds(req.tenantId!, req.user!.id);
+  return ownerId !== null && visibleUserIds.includes(ownerId);
 }
 
 async function filterFieldsByPermission(
@@ -69,6 +79,8 @@ router.get('/:objectName', async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to read this object' });
     }
 
+    const objectPermissions = await getUserObjectPermissions(req.tenantId!, req.user!.id, objectName);
+
     const { page, limit, search, sortBy, sortOrder, ...filters } = req.query;
     const cleanFilters: Record<string, any> = {};
     for (const [key, value] of Object.entries(filters)) {
@@ -84,6 +96,9 @@ router.get('/:objectName', async (req: AuthRequest, res: Response) => {
       filters: Object.keys(cleanFilters).length > 0 ? cleanFilters : undefined,
       sortBy: sortBy as string,
       sortOrder: (sortOrder as 'asc' | 'desc') || 'desc',
+      ownerIds: objectPermissions?.viewAll || objectPermissions?.modifyAll
+        ? undefined
+        : await getRoleHierarchyUserIds(req.tenantId!, req.user!.id),
     });
 
     const fieldPerms = await getUserFieldPermissions(req.tenantId!, req.user!.id, (await getObjectDefinition(req.tenantId!, objectName))?.id || '');
@@ -117,6 +132,10 @@ router.get('/:objectName/:id', async (req: AuthRequest, res: Response) => {
     }
     if (!record) {
       return res.status(404).json({ success: false, error: 'Record not found' });
+    }
+
+    if (!(await canAccessOwnedRecord(req, objectName, record.ownerId, 'read'))) {
+      return res.status(403).json({ success: false, error: 'You do not have access to this record' });
     }
 
     const object = await getObjectDefinition(req.tenantId!, objectName);
@@ -173,6 +192,11 @@ router.put('/:objectName/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, error: 'Object not found' });
     }
 
+    const existingRecord = await getRecord(req.tenantId!, objectName, id) || await getRecordByNumber(req.tenantId!, objectName, id);
+    if (existingRecord && !(await canAccessOwnedRecord(req, objectName, existingRecord.ownerId, 'update'))) {
+      return res.status(403).json({ success: false, error: 'You do not have access to update this record' });
+    }
+
     const fieldPerms = await getUserFieldPermissions(req.tenantId!, req.user!.id, object.id);
     const filteredData = await filterFieldsByPermission(req.body, fieldPerms, 'write');
 
@@ -197,6 +221,11 @@ router.delete('/:objectName/:id', async (req: AuthRequest, res: Response) => {
     const hasPermission = await checkObjectPermission(req, objectName, 'delete');
     if (!hasPermission) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to delete this object' });
+    }
+
+    const existingRecord = await getRecord(req.tenantId!, objectName, id) || await getRecordByNumber(req.tenantId!, objectName, id);
+    if (existingRecord && !(await canAccessOwnedRecord(req, objectName, existingRecord.ownerId, 'delete'))) {
+      return res.status(403).json({ success: false, error: 'You do not have access to delete this record' });
     }
 
     const result = await deleteRecord(req.tenantId!, objectName, id, req.user!.id);

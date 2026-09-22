@@ -76,6 +76,7 @@ async function main() {
       name: 'System Administrator',
       description: 'Full admin profile',
       isDefault: false,
+      isAdmin: true,
     },
   });
 
@@ -140,6 +141,8 @@ async function main() {
       firstName: 'System',
       lastName: 'Admin',
       isActive: true,
+      profileId: adminProfile.id,
+      roleId: adminRole.id,
     },
   });
 
