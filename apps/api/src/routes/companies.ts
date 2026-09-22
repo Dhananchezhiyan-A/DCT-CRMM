@@ -708,14 +708,22 @@ router.get('/companies/:id/capacity', async (req: AuthRequest, res: Response) =>
       select: { id: true, name: true, isAdmin: true },
     });
 
-    const profileBreakdown = await Promise.all(
-      profiles.map(async (profile) => {
-        const count = await prisma.user.count({
-          where: { tenantId: id, profileId: profile.id, isActive: true, isSuperAdmin: false },
-        });
-        return { profileId: profile.id, profileName: profile.name, isAdmin: profile.isAdmin, count };
+    const grouped = await prisma.user.groupBy({
+      by: ['profileId'],
+      where: { tenantId: id, isActive: true, isSuperAdmin: false, profileId: { not: null } },
+      _count: { id: true },
+    });
+
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+    const profileBreakdown = grouped
+      .map(g => {
+        const profile = profileMap.get(g.profileId!);
+        return { profileId: g.profileId, profileName: profile?.name ?? 'Unknown', isAdmin: profile?.isAdmin ?? false, count: g._count.id };
       })
-    );
+      .concat(profiles
+        .filter(p => !grouped.some(g => g.profileId === p.id))
+        .map(p => ({ profileId: p.id, profileName: p.name, isAdmin: p.isAdmin, count: 0 }))
+      );
 
     const adminUsers = profileBreakdown
       .filter((p) => p.isAdmin)

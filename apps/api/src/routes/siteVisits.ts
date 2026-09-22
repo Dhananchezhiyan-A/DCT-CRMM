@@ -190,7 +190,7 @@ router.patch('/:id/complete', authorize('SiteVisit', 'edit'), async (req: AuthRe
 
     const existing = await prisma.siteVisit.findFirst({
       where: { id: req.params.id, tenantId },
-      include: { lead: true },
+      include: { lead: { select: { id: true, status: true } } },
     });
 
     if (!existing) {

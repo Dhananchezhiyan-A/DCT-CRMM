@@ -1,5 +1,4 @@
 import { Response, NextFunction } from 'express';
-import { prisma } from '@dct-crm/db';
 import { AuthRequest } from './auth';
 import { EffectivePermissionService } from '../services/effectivePermissions';
 
@@ -10,16 +9,7 @@ export const requirePermission = (permissionName: string) => {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
 
-      if (req.user.isSuperAdmin) {
-        return next();
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { profile: { select: { isAdmin: true } } },
-      });
-
-      if (user?.profile?.isAdmin) {
+      if (req.user.isSuperAdmin || req.user.isAdmin) {
         return next();
       }
 
@@ -44,16 +34,7 @@ export const requireAnyPermission = (permissionNames: string[]) => {
         return res.status(401).json({ success: false, error: 'Authentication required' });
       }
 
-      if (req.user.isSuperAdmin) {
-        return next();
-      }
-
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { profile: { select: { isAdmin: true } } },
-      });
-
-      if (user?.profile?.isAdmin) {
+      if (req.user.isSuperAdmin || req.user.isAdmin) {
         return next();
       }
 

@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Users, UserPlus, UserMinus, AlertTriangle, Settings } from "lucide-react";
+import { Users, UserPlus, UserMinus, AlertTriangle, Settings, Plus, Trash2 } from "lucide-react";
 import { roundRobinApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -34,29 +36,55 @@ interface EligibleUser {
   profile?: { id: string; name: string } | null;
 }
 
-const POOL_TYPES = [
-  { key: "PRESALES", label: "Presales Round Robin", description: "Assigns incoming leads to Presales team members" },
-  { key: "SVC", label: "SVC Round Robin", description: "Assigns leads pushed from Presales to SVC team members" },
-  { key: "SALES", label: "Sales Round Robin", description: "Assigns leads after site visit to Sales team members" },
-] as const;
+interface PoolConfig {
+  id: string;
+  tenantId: string;
+  poolType: string;
+  name: string;
+  description: string | null;
+  profileName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const AVAILABLE_PROFILES = [
+  { name: "Presales", label: "Presales" },
+  { name: "SVC", label: "SVC" },
+  { name: "Sales", label: "Sales" },
+  { name: "Marketing", label: "Marketing" },
+  { name: "Finance", label: "Finance" },
+  { name: "Recovery", label: "Recovery" },
+  { name: "Admin", label: "Admin" },
+];
 
 export default function RoundRobinPage() {
   const { toast } = useToast();
-  const [members, setMembers] = React.useState<Record<string, Member[]>>({ PRESALES: [], SVC: [], SALES: [] });
+  const [members, setMembers] = React.useState<Record<string, Member[]>>({});
+  const [configs, setConfigs] = React.useState<PoolConfig[]>([]);
   const [loading, setLoading] = React.useState(true);
+
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = React.useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+
   const [selectedPool, setSelectedPool] = React.useState<string>("");
   const [eligibleUsers, setEligibleUsers] = React.useState<EligibleUser[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState<string>("");
   const [removingMember, setRemovingMember] = React.useState<Member | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  const loadMembers = React.useCallback(async () => {
+  const [newConfig, setNewConfig] = React.useState({ poolType: "", name: "", description: "", profileName: "" });
+
+  const loadAll = React.useCallback(async () => {
     try {
       setLoading(true);
-      const response = await roundRobinApi.getAll();
-      setMembers(response.data.data);
+      const [membersRes, configsRes] = await Promise.all([
+        roundRobinApi.getAll(),
+        roundRobinApi.getConfigs(),
+      ]);
+      setMembers(membersRes.data.data);
+      setConfigs(configsRes.data.data || []);
     } catch (error: any) {
       toast({ title: "Failed to load Round Robin configuration", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
     } finally {
@@ -64,7 +92,7 @@ export default function RoundRobinPage() {
     }
   }, [toast]);
 
-  React.useEffect(() => { void loadMembers(); }, [loadMembers]);
+  React.useEffect(() => { void loadAll(); }, [loadAll]);
 
   const openAddDialog = async (poolType: string) => {
     setSelectedPool(poolType);
@@ -84,7 +112,7 @@ export default function RoundRobinPage() {
       setSaving(true);
       await roundRobinApi.addMember(selectedUserId, selectedPool);
       setAddDialogOpen(false);
-      await loadMembers();
+      await loadAll();
       toast({ title: "Member added", description: "User added to Round Robin pool." });
     } catch (error: any) {
       toast({ title: "Failed to add member", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
@@ -105,10 +133,44 @@ export default function RoundRobinPage() {
       await roundRobinApi.removeMember(removingMember.id);
       setRemoveDialogOpen(false);
       setRemovingMember(null);
-      await loadMembers();
+      await loadAll();
       toast({ title: "Member removed", description: "User removed from Round Robin pool." });
     } catch (error: any) {
       toast({ title: "Failed to remove member", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateConfig = async () => {
+    if (!newConfig.poolType || !newConfig.name || !newConfig.profileName) return;
+    try {
+      setSaving(true);
+      await roundRobinApi.createConfig(newConfig);
+      setCreateDialogOpen(false);
+      setNewConfig({ poolType: "", name: "", description: "", profileName: "" });
+      await loadAll();
+      toast({ title: "Round Robin created", description: `New pool "${newConfig.name}" has been created.` });
+    } catch (error: any) {
+      toast({ title: "Failed to create Round Robin", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteConfig = async (config: PoolConfig) => {
+    const count = (members[config.poolType] || []).filter((m) => m.isActive).length;
+    if (count > 0) {
+      toast({ title: "Cannot delete", description: `Remove all ${count} member(s) from this pool first.`, variant: "destructive" as any });
+      return;
+    }
+    try {
+      setSaving(true);
+      await roundRobinApi.deleteConfig(config.id);
+      await loadAll();
+      toast({ title: "Configuration deleted" });
+    } catch (error: any) {
+      toast({ title: "Failed to delete configuration", description: error?.response?.data?.error || "Try again.", variant: "destructive" as any });
     } finally {
       setSaving(false);
     }
@@ -135,9 +197,13 @@ export default function RoundRobinPage() {
               Round Robin Configuration
             </h1>
             <p className="text-muted-foreground mt-1">
-              Configure automatic lead assignment pools for Presales, SVC, and Sales teams.
+              Configure automatic lead assignment pools for your teams.
             </p>
           </div>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New Round Robin
+          </Button>
         </div>
       </div>
 
@@ -145,26 +211,48 @@ export default function RoundRobinPage() {
         <div className="flex items-center justify-center py-12">
           <div className="text-muted-foreground">Loading configuration...</div>
         </div>
+      ) : configs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertTriangle className="h-8 w-8 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground mb-4">No Round Robin configurations found.</p>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Create First Configuration
+          </Button>
+        </div>
       ) : (
         <div className="grid gap-6">
-          {POOL_TYPES.map(({ key, label, description }) => (
-            <Card key={key}>
+          {configs.map((config) => (
+            <Card key={config.poolType}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <div>
+                <div className="flex-1">
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5" />
-                    {label}
-                    <Badge variant="secondary">{getMemberCount(key)} members</Badge>
+                    {config.name}
+                    <Badge variant="secondary">{getMemberCount(config.poolType)} members</Badge>
                   </CardTitle>
-                  <CardDescription>{description}</CardDescription>
+                  <CardDescription>
+                    {config.description || `Pool type: ${config.poolType} · Profile: ${config.profileName}`}
+                  </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => openAddDialog(key)}>
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  Add User
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => openAddDialog(config.poolType)}>
+                    <UserPlus className="h-4 w-4 mr-1" />
+                    Add User
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteConfig(config)}
+                    className="text-destructive hover:text-destructive"
+                    disabled={getMemberCount(config.poolType) > 0}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                {(members[key] || []).length === 0 ? (
+                {(members[config.poolType] || []).length === 0 ? (
                   <div className="flex items-center gap-2 py-6 text-muted-foreground justify-center">
                     <AlertTriangle className="h-4 w-4" />
                     No members configured. Add users to enable automatic lead assignment.
@@ -181,7 +269,7 @@ export default function RoundRobinPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(members[key] || []).map((member) => (
+                      {(members[config.poolType] || []).map((member) => (
                         <TableRow key={member.id}>
                           <TableCell className="font-medium">
                             {member.user.firstName} {member.user.lastName}
@@ -216,10 +304,68 @@ export default function RoundRobinPage() {
         </div>
       )}
 
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Round Robin Configuration</DialogTitle>
+            <DialogDescription>
+              Create a new Round Robin pool for automatic lead assignment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Pool Type</Label>
+              <Input
+                placeholder="e.g. RECOVERY, MARKETING"
+                value={newConfig.poolType}
+                onChange={(e) => setNewConfig({ ...newConfig, poolType: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })}
+              />
+              <p className="text-xs text-muted-foreground">Uppercase alphanumeric. Must not duplicate an existing pool type.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                placeholder="e.g. Recovery Round Robin"
+                value={newConfig.name}
+                onChange={(e) => setNewConfig({ ...newConfig, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                placeholder="What this pool does"
+                value={newConfig.description}
+                onChange={(e) => setNewConfig({ ...newConfig, description: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Profile</Label>
+              <Select value={newConfig.profileName} onValueChange={(v) => setNewConfig({ ...newConfig, profileName: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a profile for eligible users" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AVAILABLE_PROFILES.map((p) => (
+                    <SelectItem key={p.name} value={p.name}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Users with this profile will be eligible for this pool.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateConfig} disabled={!newConfig.poolType || !newConfig.name || !newConfig.profileName || saving}>
+              {saving ? "Creating..." : "Create Round Robin"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add User to {POOL_TYPES.find((p) => p.key === selectedPool)?.label}</DialogTitle>
+            <DialogTitle>Add User to {configs.find((c) => c.poolType === selectedPool)?.name || selectedPool}</DialogTitle>
             <DialogDescription>
               Select an eligible user to add to this Round Robin pool.
             </DialogDescription>

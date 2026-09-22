@@ -20,22 +20,22 @@ import {
 const router = Router();
 router.use(authenticate);
 
-async function checkObjectPermission(req: AuthRequest, objectName: string, action: 'create' | 'read' | 'update' | 'delete'): Promise<boolean> {
-  if (req.user?.isSuperAdmin) return true;
+async function checkObjectPermission(req: AuthRequest, objectName: string, action: 'create' | 'read' | 'update' | 'delete'): Promise<{ allowed: boolean; permissions: Awaited<ReturnType<typeof getUserObjectPermissions>> }> {
+  if (req.user?.isSuperAdmin) return { allowed: true, permissions: null };
 
   const permissions = await getUserObjectPermissions(req.tenantId!, req.user!.id, objectName);
   if (!permissions) {
     const { EffectivePermissionService } = await import('../services/effectivePermissions');
     const hasFullAccess = await EffectivePermissionService.hasAnyPermission(req.user!.id, ['FULL_SYSTEM_ACCESS']);
-    return hasFullAccess;
+    return { allowed: hasFullAccess, permissions: null };
   }
 
   switch (action) {
-    case 'create': return permissions.canCreate || permissions.modifyAll;
-    case 'read': return permissions.canRead || permissions.viewAll;
-    case 'update': return permissions.canUpdate || permissions.modifyAll;
-    case 'delete': return permissions.canDelete || permissions.modifyAll;
-    default: return false;
+    case 'create': return { allowed: permissions.canCreate || permissions.modifyAll, permissions };
+    case 'read': return { allowed: permissions.canRead || permissions.viewAll, permissions };
+    case 'update': return { allowed: permissions.canUpdate || permissions.modifyAll, permissions };
+    case 'delete': return { allowed: permissions.canDelete || permissions.modifyAll, permissions };
+    default: return { allowed: false, permissions };
   }
 }
 
@@ -74,12 +74,10 @@ async function filterFieldsByPermission(
 router.get('/:objectName', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'read');
-    if (!hasPermission) {
+    const { allowed, permissions: objectPermissions } = await checkObjectPermission(req, objectName, 'read');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to read this object' });
     }
-
-    const objectPermissions = await getUserObjectPermissions(req.tenantId!, req.user!.id, objectName);
 
     const { page, limit, search, sortBy, sortOrder, ...filters } = req.query;
     const cleanFilters: Record<string, any> = {};
@@ -121,8 +119,8 @@ router.get('/:objectName', async (req: AuthRequest, res: Response) => {
 router.get('/:objectName/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName, id } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'read');
-    if (!hasPermission) {
+    const { allowed } = await checkObjectPermission(req, objectName, 'read');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to read this object' });
     }
 
@@ -155,8 +153,8 @@ router.get('/:objectName/:id', async (req: AuthRequest, res: Response) => {
 router.post('/:objectName', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'create');
-    if (!hasPermission) {
+    const { allowed } = await checkObjectPermission(req, objectName, 'create');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to create this object' });
     }
 
@@ -182,8 +180,8 @@ router.post('/:objectName', async (req: AuthRequest, res: Response) => {
 router.put('/:objectName/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName, id } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'update');
-    if (!hasPermission) {
+    const { allowed } = await checkObjectPermission(req, objectName, 'update');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to update this object' });
     }
 
@@ -218,8 +216,8 @@ router.put('/:objectName/:id', async (req: AuthRequest, res: Response) => {
 router.delete('/:objectName/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName, id } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'delete');
-    if (!hasPermission) {
+    const { allowed } = await checkObjectPermission(req, objectName, 'delete');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to delete this object' });
     }
 
@@ -243,8 +241,8 @@ router.delete('/:objectName/:id', async (req: AuthRequest, res: Response) => {
 router.post('/:objectName/bulk', async (req: AuthRequest, res: Response) => {
   try {
     const { objectName } = req.params;
-    const hasPermission = await checkObjectPermission(req, objectName, 'create');
-    if (!hasPermission) {
+    const { allowed } = await checkObjectPermission(req, objectName, 'create');
+    if (!allowed) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions to create records' });
     }
 

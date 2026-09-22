@@ -122,7 +122,6 @@ router.post('/login', async (req: Request, res: Response) => {
     if (error.name === 'ZodError') {
       return res.status(400).json({ success: false, error: error.errors[0].message });
     }
-    console.error('Login error:', error);
     res.status(500).json({ success: false, error: 'Login failed' });
   }
 });

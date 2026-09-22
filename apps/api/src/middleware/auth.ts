@@ -10,6 +10,9 @@ export interface AuthRequest extends Request {
     tenantId: string;
     isSuperAdmin: boolean;
     impersonatedBy?: string;
+    profileId?: string;
+    profileName?: string;
+    isAdmin?: boolean;
   };
   tenantId?: string;
   effectivePermissions?: EffectivePermission[];
@@ -39,6 +42,8 @@ export const authenticate = async (
       where: { id: decoded.id },
       select: {
         id: true, email: true, tenantId: true, isActive: true, isSuperAdmin: true,
+        profileId: true,
+        profile: { select: { id: true, name: true, isAdmin: true } },
         tenant: { select: { isActive: true, companyStartDate: true, companyExpiryDate: true } },
       },
     });
@@ -66,6 +71,9 @@ export const authenticate = async (
       tenantId: user.tenantId,
       isSuperAdmin: user.isSuperAdmin,
       impersonatedBy: decoded.impersonatedBy,
+      profileId: user.profileId || user.profile?.id || undefined,
+      profileName: user.profile?.name || undefined,
+      isAdmin: user.profile?.isAdmin || false,
     };
     req.tenantId = user.tenantId;
 

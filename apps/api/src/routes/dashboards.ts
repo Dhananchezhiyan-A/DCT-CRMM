@@ -257,28 +257,32 @@ router.post('/:id/widgets/:widgetId/data', authorize('Dashboard', 'read'), async
         return result._sum.amount || 0;
       },
       leadsByStatus: async () => {
-        const statuses = ['NEW', 'PROSPECT', 'SITE_VISIT_SCHEDULED', 'SALES', 'BOOKED', 'LOST'];
-        const results = await Promise.all(
-          statuses.map(async (status) => ({
-            status,
-            count: await prisma.lead.count({ where: { tenantId: req.tenantId!, status: status as any } }),
-          }))
-        );
-        return results;
+        const results = await prisma.lead.groupBy({
+          by: ['status'],
+          where: { tenantId: req.tenantId! },
+          _count: { id: true },
+        });
+        return results.map((r) => ({ status: r.status, count: r._count.id }));
       },
       opportunitiesByStage: async () => {
-        const stages = ['PROSPECTING', 'QUALIFICATION', 'PROPOSAL', 'NEGOTIATION', 'CLOSED_WON', 'CLOSED_LOST'];
-        const results = await Promise.all(
-          stages.map(async (stage) => ({
-            stage,
-            count: await prisma.opportunity.count({ where: { tenantId: req.tenantId!, stage: stage as any } }),
-            amount: await prisma.opportunity.aggregate({
-              where: { tenantId: req.tenantId!, stage: stage as any },
-              _sum: { amount: true },
-            }).then((r) => r._sum.amount || 0),
-          }))
-        );
-        return results;
+        const [countByStage, amountByStage] = await Promise.all([
+          prisma.opportunity.groupBy({
+            by: ['stage'],
+            where: { tenantId: req.tenantId! },
+            _count: { id: true },
+          }),
+          prisma.opportunity.groupBy({
+            by: ['stage'],
+            where: { tenantId: req.tenantId!, amount: { not: null } },
+            _sum: { amount: true },
+          }),
+        ]);
+        const amountMap = new Map(amountByStage.map((r) => [r.stage, r._sum.amount || 0]));
+        return countByStage.map((r) => ({
+          stage: r.stage,
+          count: r._count.id,
+          amount: amountMap.get(r.stage) || 0,
+        }));
       },
       recentActivities: async () =>
         prisma.activity.findMany({

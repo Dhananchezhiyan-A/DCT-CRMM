@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/auth-context";
 import {
   LayoutDashboard,
@@ -25,14 +24,8 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Search,
-  Bell,
-  Menu,
   X,
-  Database,
-  Boxes,
 } from "lucide-react";
-import { objectManagerApi } from "@/lib/api";
 
 interface NavItem {
   title: string;
@@ -41,22 +34,10 @@ interface NavItem {
   items?: NavItem[];
 }
 
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  user: Users,
-  contact: Contact,
-  building: Building2,
-  "trending-up": TrendingUp,
-  "file-text": FileText,
-  "calendar-check": CalendarCheck,
-  "credit-card": CreditCard,
-  "folder-kanban": FolderKanban,
-  "check-square": CheckSquare,
-  "map-pin": MapPin,
-  home: Building2,
-  activity: TrendingUp,
-  database: Database,
-  boxes: Boxes,
-};
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
 function getNavigationByProfile(profileName: string | undefined, roles: string[], hasEffectivePermission: (perm: string) => boolean, isSuperAdmin: boolean, isAdmin: boolean): NavItem[] {
   const showAdminSection = isSuperAdmin || isAdmin;
@@ -137,50 +118,12 @@ function getNavigationByProfile(profileName: string | undefined, roles: string[]
   return nav;
 }
 
-interface SidebarProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { profile, roles, hasEffectivePermission, isSuperAdmin, isAdmin, tenant } = useAuth();
   const [expandedItems, setExpandedItems] = React.useState<string[]>([]);
-  const [customObjects, setCustomObjects] = React.useState<NavItem[]>([]);
 
-  React.useEffect(() => {
-    loadCustomObjects();
-  }, []);
-
-  const loadCustomObjects = async () => {
-    try {
-      const res = await objectManagerApi.listObjects();
-      const objects = res.data.data || [];
-      const customItems: NavItem[] = objects
-        .filter((obj: any) => obj.objectType === "custom" && obj.isActive)
-        .map((obj: any) => ({
-          title: obj.pluralLabel,
-          href: `/objects/${obj.name.toLowerCase()}`,
-          icon: iconMap[obj.icon || "database"] || Database,
-        }));
-
-      if (customItems.length > 0) {
-        setCustomObjects([
-          {
-            title: "Custom Objects",
-            href: "#",
-            icon: Boxes,
-            items: customItems,
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error("Failed to load custom objects:", error);
-    }
-  };
-
-  const staticNavigation = getNavigationByProfile(profile?.name, roles, hasEffectivePermission, isSuperAdmin, isAdmin);
-  const navigation = [...staticNavigation, ...customObjects];
+  const navigation = getNavigationByProfile(profile?.name, roles, hasEffectivePermission, isSuperAdmin, isAdmin);
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) =>

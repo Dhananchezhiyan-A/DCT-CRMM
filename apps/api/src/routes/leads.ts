@@ -47,11 +47,7 @@ router.get('/', authorize('Lead', 'read'), async (req: AuthRequest, res: Respons
       ];
     }
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
+    const profileName = req.user!.profileName || 'Admin';
 
     if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
       const allowedStatuses = getAllowedStatuses(profileName);
@@ -197,18 +193,13 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
       },
     });
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-
     await createOwnerHistory({
       tenantId: req.tenantId!,
       leadId: lead.id,
       previousOwnerId: null,
       newOwnerId: ownerId,
       previousProfile: null,
-      newProfile: userProfile?.profile?.name || null,
+      newProfile: req.user!.profileName || null,
       previousStatus: null,
       newStatus: 'NEW',
       handoffReason: 'Lead Created',
@@ -255,11 +246,7 @@ router.put('/:id', authorize('Lead', 'edit'), async (req: AuthRequest, res: Resp
     }
 
     if (data.status) {
-      const userProfile = await prisma.user.findUnique({
-        where: { id: req.user!.id },
-        select: { profile: { select: { name: true } } },
-      });
-      const profileName = userProfile?.profile?.name || 'Admin';
+      const profileName = req.user!.profileName || 'Admin';
 
       if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
         if (!canTransitionStatus(profileName, existingLead.status, data.status)) {
@@ -379,11 +366,7 @@ router.post('/:id/push-to-svc', authorize('Lead', 'edit'), async (req: AuthReque
       return res.status(400).json({ success: false, error: 'Lead must be in Incoming status to push to SVC' });
     }
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
+    const profileName = req.user!.profileName || 'Admin';
 
     if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
       if (!canTransitionStatus(profileName, 'INCOMING', 'PROSPECT')) {
@@ -484,11 +467,7 @@ router.post('/:id/move-to-recovery', authorize('Lead', 'edit'), async (req: Auth
       return res.status(400).json({ success: false, error: 'Lead must be in New or Incoming status to move to recovery' });
     }
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
+    const profileName = req.user!.profileName || 'Admin';
 
     if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
       if (!canTransitionStatus(profileName, lead.status, 'LOST')) {
@@ -566,11 +545,7 @@ router.post('/:id/schedule-site-visit', authorize('Lead', 'edit'), async (req: A
       return res.status(400).json({ success: false, error: 'Lead must be in Prospect status to schedule site visit' });
     }
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
+    const profileName = req.user!.profileName || 'Admin';
 
     if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
       if (!canTransitionStatus(profileName, 'PROSPECT', 'SITE_VISIT_SCHEDULED')) {
@@ -690,11 +665,7 @@ router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, re
       return res.status(400).json({ success: false, error: `Lead is already in ${status} status` });
     }
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-    const profileName = userProfile?.profile?.name || 'Admin';
+    const profileName = req.user!.profileName || 'Admin';
 
     if (profileName !== 'Admin' && profileName !== 'Manager' && profileName !== 'CRM Admin') {
       if (!canTransitionStatus(profileName, lead.status, status)) {
@@ -757,11 +728,6 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
       select: { id: true, firstName: true, lastName: true },
     }) : null;
 
-    const userProfile = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { profile: { select: { name: true } } },
-    });
-
     const updatedLead = await prisma.lead.update({
       where: { id: req.params.id },
       data: { ownerId },
@@ -775,7 +741,7 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
       leadId: lead.id,
       previousOwnerId: lead.ownerId,
       newOwnerId: ownerId || null,
-      previousProfile: userProfile?.profile?.name || null,
+      previousProfile: req.user!.profileName || null,
       newProfile: null,
       previousStatus: lead.status,
       newStatus: lead.status,

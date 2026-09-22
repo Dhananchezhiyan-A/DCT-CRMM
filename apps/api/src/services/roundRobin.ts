@@ -84,3 +84,8 @@ export async function getNextPresalesUser(tenantId: string): Promise<RoundRobinR
   const users = await getConfiguredMembers(tenantId, 'PRESALES');
   return pickNextUser(users, tenantId, 'PRESALES_ROUND_ROBIN');
 }
+
+export async function getNextUserByPool(tenantId: string, poolType: string): Promise<RoundRobinResult | null> {
+  const users = await getConfiguredMembers(tenantId, poolType);
+  return pickNextUser(users, tenantId, `${poolType}_ROUND_ROBIN`);
+}

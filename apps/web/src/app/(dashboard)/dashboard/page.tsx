@@ -20,6 +20,45 @@ import {
 import Link from "next/link";
 import { analyticsApi, opportunityApi, taskApi, activityApi } from "@/lib/api";
 
+function formatAmount(amount: number) {
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
+  if (amount >= 1000) return `₹${(amount / 1000).toFixed(1)}K`;
+  return `₹${amount}`;
+}
+
+function getActivityTypeColor(type: string) {
+  switch (type?.toLowerCase()) {
+    case "call": return "bg-blue-100 text-blue-800";
+    case "meeting": return "bg-green-100 text-green-800";
+    case "email": return "bg-purple-100 text-purple-800";
+    case "note": return "bg-yellow-100 text-yellow-800";
+    default: return "bg-gray-100 text-gray-800";
+  }
+}
+
+function getPriorityColor(priority: string) {
+  switch (priority?.toLowerCase()) {
+    case "high":
+    case "urgent": return "bg-red-500";
+    case "medium": return "bg-yellow-500";
+    default: return "bg-green-500";
+  }
+}
+
+function formatTimeAgo(dateStr: string) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 export default function DashboardPage() {
   const [kpis, setKpis] = React.useState<any[]>([]);
   const [pipelineStages, setPipelineStages] = React.useState<any[]>([]);
@@ -28,11 +67,7 @@ export default function DashboardPage() {
   const [recentActivities, setRecentActivities] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = React.useCallback(async () => {
     setIsLoading(true);
     try {
       const [leadsRes, oppRes, pipelineRes, tasksRes, activitiesRes, recentOppRes] = await Promise.allSettled([
@@ -102,46 +137,11 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const formatAmount = (amount: number) => {
-    if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
-    if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
-    if (amount >= 1000) return `₹${(amount / 1000).toFixed(1)}K`;
-    return `₹${amount}`;
-  };
-
-  const getActivityTypeColor = (type: string) => {
-    switch (type?.toLowerCase()) {
-      case "call": return "bg-blue-100 text-blue-800";
-      case "meeting": return "bg-green-100 text-green-800";
-      case "email": return "bg-purple-100 text-purple-800";
-      case "note": return "bg-yellow-100 text-yellow-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority?.toLowerCase()) {
-      case "high":
-      case "urgent": return "bg-red-500";
-      case "medium": return "bg-yellow-500";
-      default: return "bg-green-500";
-    }
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    if (!dateStr) return "";
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
-  };
+  React.useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   return (
     <div className="space-y-6">

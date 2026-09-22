@@ -1,30 +1,165 @@
 import { Router, Response } from 'express';
 import { prisma } from '@dct-crm/db';
+import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authenticate);
 
-const VALID_POOL_TYPES = ['PRESALES', 'SVC', 'SALES'];
-
 function requireAdmin(req: AuthRequest, res: Response): boolean {
-  if (!req.user?.isSuperAdmin) {
-    const isAdmin = (req as any).effectivePermissions?.some(
-      (p: any) => p.objectName === 'Setup' && p.permission === 'configure'
-    );
-    if (!isAdmin) {
-      res.status(403).json({ success: false, error: 'Admin access required' });
-      return false;
-    }
+  if (req.user?.isSuperAdmin) return true;
+  if (req.user?.isAdmin) return true;
+  const hasPerm = (req as any).effectivePermissions?.some(
+    (p: any) => p.objectName === 'Setup' && p.permission === 'configure'
+  );
+  if (!hasPerm) {
+    res.status(403).json({ success: false, error: 'Admin access required' });
+    return false;
   }
   return true;
 }
 
+async function getValidPoolTypes(tenantId: string): Promise<string[]> {
+  const configs = await prisma.roundRobinConfig.findMany({
+    where: { tenantId, isActive: true },
+    select: { poolType: true },
+  });
+  return configs.map((c) => c.poolType);
+}
+
+const createConfigSchema = z.object({
+  poolType: z.string().min(1).max(50).regex(/^[A-Z][A-Z0-9_-]*$/, 'Pool type must be uppercase alphanumeric with underscores/hyphens, starting with a letter'),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  profileName: z.string().min(1).max(100),
+});
+
+router.get('/configs', async (req: AuthRequest, res: Response) => {
+  try {
+    const configs = await prisma.roundRobinConfig.findMany({
+      where: { tenantId: req.tenantId! },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return res.json({ success: true, data: configs });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/configs', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+
+    const data = createConfigSchema.parse(req.body);
+
+    const existing = await prisma.roundRobinConfig.findUnique({
+      where: { tenantId_poolType: { tenantId: req.tenantId!, poolType: data.poolType } },
+    });
+    if (existing) {
+      if (!existing.isActive) {
+        const updated = await prisma.roundRobinConfig.update({
+          where: { id: existing.id },
+          data: { isActive: true, name: data.name, description: data.description, profileName: data.profileName },
+        });
+        await prisma.auditLog.create({
+          data: {
+            tenantId: req.tenantId!,
+            userId: req.user!.id,
+            action: 'UPDATE',
+            objectType: 'RoundRobinConfig',
+            objectId: updated.id,
+            newValues: { name: data.name, poolType: data.poolType, profileName: data.profileName },
+          },
+        });
+        return res.json({ success: true, data: updated });
+      }
+      return res.status(409).json({ success: false, error: 'A Round Robin configuration with this pool type already exists' });
+    }
+
+    const profile = await prisma.profile.findFirst({
+      where: { tenantId: req.tenantId!, name: data.profileName },
+    });
+    if (!profile) {
+      return res.status(400).json({ success: false, error: `Profile "${data.profileName}" not found` });
+    }
+
+    const config = await prisma.roundRobinConfig.create({
+      data: {
+        tenantId: req.tenantId!,
+        poolType: data.poolType,
+        name: data.name,
+        description: data.description || null,
+        profileName: data.profileName,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId!,
+        userId: req.user!.id,
+        action: 'CREATE',
+        objectType: 'RoundRobinConfig',
+        objectId: config.id,
+        newValues: { name: data.name, poolType: data.poolType, profileName: data.profileName },
+      },
+    });
+
+    return res.json({ success: true, data: config });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ success: false, error: error.errors[0].message });
+    }
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.delete('/configs/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+
+    const config = await prisma.roundRobinConfig.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+    });
+    if (!config) {
+      return res.status(404).json({ success: false, error: 'Configuration not found' });
+    }
+
+    const activeMembers = await prisma.roundRobinMember.count({
+      where: { tenantId: req.tenantId!, poolType: config.poolType, isActive: true },
+    });
+    if (activeMembers > 0) {
+      return res.status(400).json({ success: false, error: `Cannot delete: ${activeMembers} active member(s) in this pool. Remove them first.` });
+    }
+
+    await prisma.roundRobinConfig.update({
+      where: { id: config.id },
+      data: { isActive: false },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.tenantId!,
+        userId: req.user!.id,
+        action: 'DELETE',
+        objectType: 'RoundRobinConfig',
+        objectId: config.id,
+        oldValues: { name: config.name, poolType: config.poolType },
+      },
+    });
+
+    return res.json({ success: true, message: 'Configuration deleted' });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/:poolType', async (req: AuthRequest, res: Response) => {
   try {
     const { poolType } = req.params;
-    if (!VALID_POOL_TYPES.includes(poolType)) {
+    const validTypes = await getValidPoolTypes(req.tenantId!);
+    if (!validTypes.includes(poolType)) {
       return res.status(400).json({ success: false, error: 'Invalid pool type' });
     }
 
@@ -49,6 +184,11 @@ router.get('/:poolType', async (req: AuthRequest, res: Response) => {
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
+    const configs = await prisma.roundRobinConfig.findMany({
+      where: { tenantId: req.tenantId!, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
     const members = await prisma.roundRobinMember.findMany({
       where: { tenantId: req.tenantId! },
       include: {
@@ -59,15 +199,19 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           },
         },
       },
-      orderBy: [{ poolType: 'asc' }, { createdAt: 'asc' }],
+      orderBy: { createdAt: 'asc' },
     });
 
-    const grouped: Record<string, any[]> = { PRESALES: [], SVC: [], SALES: [] };
+    const grouped: Record<string, any[]> = {};
+    for (const config of configs) {
+      grouped[config.poolType] = [];
+    }
     for (const m of members) {
-      if (grouped[m.poolType]) grouped[m.poolType].push(m);
+      if (!grouped[m.poolType]) grouped[m.poolType] = [];
+      grouped[m.poolType].push(m);
     }
 
-    return res.json({ success: true, data: grouped });
+    return res.json({ success: true, data: grouped, configs });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -81,7 +225,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     if (!userId || !poolType) {
       return res.status(400).json({ success: false, error: 'userId and poolType required' });
     }
-    if (!VALID_POOL_TYPES.includes(poolType)) {
+
+    const validTypes = await getValidPoolTypes(req.tenantId!);
+    if (!validTypes.includes(poolType)) {
       return res.status(400).json({ success: false, error: 'Invalid pool type' });
     }
 
@@ -171,18 +317,16 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
 router.get('/eligible/:poolType', async (req: AuthRequest, res: Response) => {
   try {
     const { poolType } = req.params;
-    if (!VALID_POOL_TYPES.includes(poolType)) {
+
+    const config = await prisma.roundRobinConfig.findUnique({
+      where: { tenantId_poolType: { tenantId: req.tenantId!, poolType } },
+    });
+    if (!config || !config.isActive) {
       return res.status(400).json({ success: false, error: 'Invalid pool type' });
     }
 
-    const profileNameMap: Record<string, string> = {
-      PRESALES: 'Presales',
-      SVC: 'SVC',
-      SALES: 'Sales',
-    };
-
     const profile = await prisma.profile.findFirst({
-      where: { tenantId: req.tenantId!, name: profileNameMap[poolType] },
+      where: { tenantId: req.tenantId!, name: config.profileName },
     });
 
     if (!profile) {

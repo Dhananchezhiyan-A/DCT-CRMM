@@ -707,4 +707,7 @@ export const roundRobinApi = {
   addMember: (userId: string, poolType: string) => api.post<ApiResponse>('/api/round-robin', { userId, poolType }),
   removeMember: (id: string) => api.delete<ApiResponse>(`/api/round-robin/${id}`),
   getEligible: (poolType: string) => api.get<ApiResponse>(`/api/round-robin/eligible/${poolType}`),
+  getConfigs: () => api.get<ApiResponse>('/api/round-robin/configs'),
+  createConfig: (data: { poolType: string; name: string; description?: string; profileName: string }) => api.post<ApiResponse>('/api/round-robin/configs', data),
+  deleteConfig: (id: string) => api.delete<ApiResponse>(`/api/round-robin/configs/${id}`),
 };

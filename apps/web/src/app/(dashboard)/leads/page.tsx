@@ -76,17 +76,26 @@ export default function LeadsPage() {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [totalItems, setTotalItems] = React.useState(0);
   const [search, setSearch] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("");
   const [sourceFilter, setSourceFilter] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const allowedStatuses = React.useMemo(
     () => getAllowedStatuses(profile?.name),
     [profile?.name]
   );
 
-  const canCreateLead = hasPermission("Lead", "create");
+  const canCreateLead = React.useMemo(() => hasPermission("Lead", "create"), [hasPermission]);
 
   const fetchLeads = React.useCallback(async () => {
     setIsLoading(true);
@@ -96,7 +105,7 @@ export default function LeadsPage() {
         page: currentPage,
         limit: 20,
       };
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (statusFilter) params.status = statusFilter;
       if (sourceFilter) params.source = sourceFilter;
       if (dateFrom) params.from = dateFrom;
@@ -117,7 +126,7 @@ export default function LeadsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, search, statusFilter, sourceFilter, dateFrom, dateTo]);
+  }, [currentPage, debouncedSearch, statusFilter, sourceFilter, dateFrom, dateTo]);
 
   React.useEffect(() => {
     fetchLeads();
@@ -157,10 +166,7 @@ export default function LeadsPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search leads..."
             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />

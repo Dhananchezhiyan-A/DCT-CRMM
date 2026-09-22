@@ -29,8 +29,9 @@ router.get('/', authenticate, authorize('Contact', 'read'), async (req: AuthRequ
   try {
     const { tenantId } = req.user!;
     const { page = 1, limit = 50, search, leadId, accountId, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const cappedLimit = Math.min(Number(limit), 100);
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const skip = (Number(page) - 1) * cappedLimit;
 
     const where: Prisma.ContactWhereInput = {
       tenantId,
@@ -50,7 +51,7 @@ router.get('/', authenticate, authorize('Contact', 'read'), async (req: AuthRequ
       prisma.contact.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: cappedLimit,
         orderBy: { [sortBy as string]: sortOrder },
         include: {
           lead: { select: { id: true, firstName: true, lastName: true } },
@@ -65,9 +66,9 @@ router.get('/', authenticate, authorize('Contact', 'read'), async (req: AuthRequ
       data: contacts,
       pagination: {
         page: Number(page),
-        limit: Number(limit),
+        limit: cappedLimit,
         total,
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / cappedLimit),
       },
     };
 

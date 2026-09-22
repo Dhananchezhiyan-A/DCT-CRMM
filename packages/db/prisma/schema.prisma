@@ -90,6 +90,7 @@ model Tenant {
   leadOwnerHistories    LeadOwnerHistory[]
   sequences             Sequence[]
   roundRobinMembers     RoundRobinMember[]
+  roundRobinConfigs     RoundRobinConfig[]
 
   @@index([slug])
   @@index([companyCode])
@@ -693,6 +694,8 @@ model Lead {
   @@index([tenantId, phone])
   @@index([tenantId, email])
   @@index([tenantId, company])
+  @@index([tenantId, source])
+  @@index([tenantId, createdAt])
   @@unique([tenantId, leadNumber])
 }
 
@@ -717,6 +720,7 @@ model Contact {
   updatedAt  DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([leadId])
   @@index([accountId])
 }
@@ -739,6 +743,7 @@ model Account {
   customers Customer[]
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
 }
 
 model Customer {
@@ -860,6 +865,7 @@ model Opportunity {
   @@index([tenantId])
   @@index([tenantId, stage])
   @@index([tenantId, ownerId])
+  @@index([leadId])
 }
 
 // ============================================
@@ -901,6 +907,8 @@ model Quotation {
 
   @@unique([tenantId, number])
   @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([leadId])
   @@index([opportunityId])
 }
 
@@ -992,6 +1000,8 @@ model Booking {
   @@unique([tenantId, number])
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, projectId])
+  @@index([leadId])
   @@index([unitId])
 }
 
@@ -1352,6 +1362,8 @@ model AuditLog {
   @@index([tenantId])
   @@index([tenantId, userId])
   @@index([tenantId, objectType])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, objectType, objectId])
   @@index([createdAt])
 }
 
@@ -1650,6 +1662,8 @@ model LeadOwnerHistory {
   @@index([leadId])
   @@index([newOwnerId])
   @@index([previousOwnerId])
+  @@index([tenantId, leadId])
+  @@index([leadId, endDate])
 }
 
 model RoundRobinMember {
@@ -1667,4 +1681,20 @@ model RoundRobinMember {
   @@index([tenantId])
   @@index([userId])
   @@index([tenantId, poolType])
+}
+
+model RoundRobinConfig {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  poolType    String
+  name        String
+  description String?
+  profileName String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, poolType])
+  @@index([tenantId])
 }
