@@ -4,7 +4,7 @@ import { leadSchema } from '@dct-crm/shared';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize } from '../middleware/authorization';
 import { canTransitionStatus, getAllowedStatuses, isValidStatus } from '../services/workflow';
-import { getNextSVCUser, getNextSalesUser } from '../services/roundRobin';
+import { getNextSVCUser, getNextSalesUser, getNextPresalesUser } from '../services/roundRobin';
 import { createOwnerHistory, getOwnerHistory } from '../services/ownerHistory';
 
 const router = Router();
@@ -149,6 +149,17 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
 
     const leadNumber = await getNextLeadNumber(req.tenantId!);
 
+    let ownerId = data.ownerId || req.user!.id;
+    if (!data.ownerId) {
+      try {
+        const presalesUser = await getNextPresalesUser(req.tenantId!);
+        if (presalesUser) {
+          ownerId = presalesUser.id;
+        }
+      } catch {
+      }
+    }
+
     const lead = await prisma.lead.create({
       data: {
         tenantId: req.tenantId!,
@@ -177,7 +188,7 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
         postalCode: data.postalCode || undefined,
         score: data.score || 0,
         budget: data.budget || undefined,
-        ownerId: data.ownerId || req.user!.id,
+        ownerId,
         projectId: data.projectId || undefined,
       },
       include: {
@@ -195,7 +206,7 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
       tenantId: req.tenantId!,
       leadId: lead.id,
       previousOwnerId: null,
-      newOwnerId: req.user!.id,
+      newOwnerId: ownerId,
       previousProfile: null,
       newProfile: userProfile?.profile?.name || null,
       previousStatus: null,
@@ -382,7 +393,7 @@ router.post('/:id/push-to-svc', authorize('Lead', 'edit'), async (req: AuthReque
 
     const svcUser = await getNextSVCUser(req.tenantId!);
     if (!svcUser) {
-      return res.status(400).json({ success: false, error: 'No eligible SVC users available' });
+      return res.status(400).json({ success: false, error: 'No active SVC Round Robin members configured' });
     }
 
     const previousOwner = lead.owner;
@@ -569,7 +580,7 @@ router.post('/:id/schedule-site-visit', authorize('Lead', 'edit'), async (req: A
 
     const salesUser = await getNextSalesUser(req.tenantId!);
     if (!salesUser) {
-      return res.status(400).json({ success: false, error: 'No eligible Sales users available' });
+      return res.status(400).json({ success: false, error: 'No active Sales Round Robin members configured' });
     }
 
     const previousOwner = lead.owner;

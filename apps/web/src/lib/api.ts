@@ -700,3 +700,11 @@ export const companyApi = {
   updatePackage: (id: string, data: { packageName?: string | null; packageStatus?: string; packageStartDate?: string | null; packageExpiryDate?: string | null; packageNotes?: string | null }) =>
     api.put<ApiResponse>(`/api/super-admin/companies/${id}/package`, data),
 };
+
+export const roundRobinApi = {
+  getAll: () => api.get<ApiResponse>('/api/round-robin'),
+  getPool: (poolType: string) => api.get<ApiResponse>(`/api/round-robin/${poolType}`),
+  addMember: (userId: string, poolType: string) => api.post<ApiResponse>('/api/round-robin', { userId, poolType }),
+  removeMember: (id: string) => api.delete<ApiResponse>(`/api/round-robin/${id}`),
+  getEligible: (poolType: string) => api.get<ApiResponse>(`/api/round-robin/eligible/${poolType}`),
+};

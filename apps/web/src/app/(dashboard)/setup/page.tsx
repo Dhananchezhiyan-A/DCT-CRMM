@@ -44,12 +44,8 @@ const groups = [
     title: "Customization",
     description: "Shape CRM data and user experiences.",
     items: [
-      { label: "Modules", href: "/setup/customization/modules", icon: Boxes },
-      { label: "Fields", href: "/setup/customization/fields", icon: LayoutTemplate },
-      { label: "Layouts", href: "/setup/customization/layouts", icon: LayoutTemplate },
+      { label: "Round Robin", href: "/setup/customization/round-robin", icon: GitBranch },
       { label: "Object Manager", href: "/admin/object-manager", icon: Boxes },
-      { label: "Layouts", href: "/admin/object-manager", icon: LayoutTemplate },
-      { label: "Picklist Values", href: "/admin/object-manager", icon: ClipboardList },
     ],
   },
   {

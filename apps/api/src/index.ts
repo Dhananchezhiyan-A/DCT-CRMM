@@ -50,6 +50,7 @@ import setupUsersRouter from './routes/setup/users';
 import setupCompanySettingsRouter from './routes/setup/company-settings';
 import setupPersonalSettingsRouter from './routes/setup/personal-settings';
 import profileSecurityRouter from './routes/profileSecurity';
+import roundRobinRouter from './routes/roundRobin';
 
 dotenv.config({ path: __dirname + '/../.env' });
 
@@ -127,6 +128,7 @@ app.use('/api/user-permissions', userPermissionRouter);
 app.use('/api/effective-permissions', effectivePermissionRouter);
 app.use('/api/profile-permissions', profilePermissionRouter);
 app.use('/api/profile-security', profileSecurityRouter);
+app.use('/api/round-robin', roundRobinRouter);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);

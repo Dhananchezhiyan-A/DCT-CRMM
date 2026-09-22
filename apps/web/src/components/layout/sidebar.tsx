@@ -105,13 +105,6 @@ function getNavigationByProfile(profileName: string | undefined, roles: string[]
       icon: Settings,
       items: [
         { title: "Setup Home", href: "/setup", icon: Settings },
-        ...(isSuperAdmin
-          ? [{ title: "Company Management", href: "/admin/companies", icon: Building2 }]
-          : [{ title: "Company Settings", href: "/setup/general/company-settings", icon: Building2 }]),
-        { title: "Object Manager", href: "/admin/object-manager", icon: Database },
-        { title: "Profiles", href: "/admin/profiles", icon: UserCheck },
-        { title: "Permission Sets", href: "/admin/permission-sets", icon: Settings },
-        { title: "Admin", href: "/admin", icon: Settings },
       ],
     });
     return allItems;

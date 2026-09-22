@@ -7,24 +7,35 @@ export interface RoundRobinResult {
   email: string;
 }
 
-async function getProfileUsers(tenantId: string, profileName: string): Promise<RoundRobinResult[]> {
-  const profile = await prisma.profile.findFirst({
-    where: { tenantId, name: profileName },
-  });
-  if (!profile) return [];
-
-  return prisma.user.findMany({
+async function getConfiguredMembers(tenantId: string, poolType: string): Promise<RoundRobinResult[]> {
+  return prisma.roundRobinMember.findMany({
     where: {
       tenantId,
+      poolType,
       isActive: true,
-      profileId: profile.id,
+      user: { isActive: true },
     },
-    select: { id: true, firstName: true, lastName: true, email: true },
+    include: {
+      user: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+    },
     orderBy: { createdAt: 'asc' },
-  });
+  }).then((members) =>
+    members.map((m) => ({
+      id: m.user.id,
+      firstName: m.user.firstName,
+      lastName: m.user.lastName,
+      email: m.user.email,
+    }))
+  );
 }
 
-async function pickNextUser(users: RoundRobinResult[], tenantId: string, queueType: string): Promise<RoundRobinResult | null> {
+async function pickNextUser(
+  users: RoundRobinResult[],
+  tenantId: string,
+  queueType: string,
+): Promise<RoundRobinResult | null> {
   if (users.length === 0) return null;
 
   const queue = await prisma.queue.findFirst({
@@ -48,7 +59,7 @@ async function pickNextUser(users: RoundRobinResult[], tenantId: string, queueTy
     await prisma.queue.create({
       data: {
         tenantId,
-        name: `${queueType.replace('_', ' ')} Queue`,
+        name: `${queueType.replace(/_/g, ' ')} Queue`,
         type: queueType,
         isActive: true,
         description: String(nextIndex),
@@ -60,16 +71,16 @@ async function pickNextUser(users: RoundRobinResult[], tenantId: string, queueTy
 }
 
 export async function getNextSVCUser(tenantId: string): Promise<RoundRobinResult | null> {
-  const users = await getProfileUsers(tenantId, 'SVC');
+  const users = await getConfiguredMembers(tenantId, 'SVC');
   return pickNextUser(users, tenantId, 'SVC_ROUND_ROBIN');
 }
 
 export async function getNextSalesUser(tenantId: string): Promise<RoundRobinResult | null> {
-  const users = await getProfileUsers(tenantId, 'Sales');
+  const users = await getConfiguredMembers(tenantId, 'SALES');
   return pickNextUser(users, tenantId, 'SALES_ROUND_ROBIN');
 }
 
 export async function getNextPresalesUser(tenantId: string): Promise<RoundRobinResult | null> {
-  const users = await getProfileUsers(tenantId, 'Presales');
+  const users = await getConfiguredMembers(tenantId, 'PRESALES');
   return pickNextUser(users, tenantId, 'PRESALES_ROUND_ROBIN');
 }

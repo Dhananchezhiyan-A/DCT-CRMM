@@ -95,11 +95,10 @@ if ($pDetail.data.auditLogs.Count -ge 2) { Pass "Audit Log on push" } else { Fai
 # 3. SVC WORKFLOW
 # ============================================
 Log "`n=== SVC WORKFLOW ===" "Cyan"
-$svcEmailMap = @{
-    "cmub0utob000zuz6c00iev124" = "neha.svc@test.com"
-    "cmub0utec000tuz6ca69rzh4y" = "vikram.svc@test.com"
-}
-$svcEmail = $svcEmailMap[$assignedUserId]
+# Dynamically find SVC user email by ID
+$svcUserLookup = $null
+try { $svcUserLookup = Invoke-RestMethod -Uri "$baseUrl/api/users/$assignedUserId" -Headers (AuthHeaders) } catch {}
+$svcEmail = if ($svcUserLookup -and $svcUserLookup.data) { $svcUserLookup.data.email } else { $null }
 if ($svcEmail) {
     Login $svcEmail "password123" | Out-Null
     Log "  SVC session: $svcEmail" "Gray"
@@ -124,11 +123,10 @@ if ($svcEmail) {
         Log "  Sales assigned: $svSalesOwner (Round Robin)" "Gray"
         
         $salesUserId = $svResp.data.lead.owner.id
-        $salesEmailMap = @{
-            "cmub0y6u8001buz6cyn18p7xo" = "sanjay.sales@test.com"
-            "cmub0y75q001huz6cx3n403kd" = "meera.sales@test.com"
-        }
-        $salesEmail = $salesEmailMap[$salesUserId]
+        # Dynamically find Sales user email by ID
+        $salesUserLookup = $null
+        try { $salesUserLookup = Invoke-RestMethod -Uri "$baseUrl/api/users/$salesUserId" -Headers (AuthHeaders) } catch {}
+        $salesEmail = if ($salesUserLookup -and $salesUserLookup.data) { $salesUserLookup.data.email } else { $null }
         
         if ($salesEmail) {
             Login $salesEmail "password123" | Out-Null

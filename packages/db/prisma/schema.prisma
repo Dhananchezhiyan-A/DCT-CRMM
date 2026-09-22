@@ -89,6 +89,7 @@ model Tenant {
   recordTeamMembers     RecordTeamMember[]
   leadOwnerHistories    LeadOwnerHistory[]
   sequences             Sequence[]
+  roundRobinMembers     RoundRobinMember[]
 
   @@index([slug])
   @@index([companyCode])
@@ -139,7 +140,8 @@ model User {
   teamMemberships          RecordTeamMember[]
   prevLeadOwnerHistory     LeadOwnerHistory[]         @relation("PrevLeadOwner")
   newLeadOwnerHistory      LeadOwnerHistory[]         @relation("NewLeadOwner")
-  leadHistoryChanges       LeadOwnerHistory[]
+   leadHistoryChanges       LeadOwnerHistory[]
+   roundRobinMembers        RoundRobinMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1648,4 +1650,21 @@ model LeadOwnerHistory {
   @@index([leadId])
   @@index([newOwnerId])
   @@index([previousOwnerId])
+}
+
+model RoundRobinMember {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  poolType   String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, userId, poolType])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([tenantId, poolType])
 }
