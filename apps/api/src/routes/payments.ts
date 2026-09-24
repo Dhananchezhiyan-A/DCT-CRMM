@@ -11,7 +11,6 @@ router.use(authenticate);
 
 const paymentSchema = z.object({
   bookingId: z.string(),
-  customerId: z.string().optional(),
   amount: z.number().min(0.01),
   status: z.enum(['PENDING', 'VERIFIED', 'REJECTED', 'PARTIAL', 'COMPLETED']).optional(),
   paymentDate: z.string().datetime().optional(),
@@ -28,7 +27,6 @@ router.get('/', authorize('Payment', 'read'), async (req: AuthRequest, res: Resp
       page = 1,
       limit = 20,
       bookingId,
-      customerId,
       status,
       minAmount,
       maxAmount,
@@ -42,7 +40,6 @@ router.get('/', authorize('Payment', 'read'), async (req: AuthRequest, res: Resp
 
     const where: any = { tenantId };
     if (bookingId) where.bookingId = bookingId;
-    if (customerId) where.customerId = customerId;
     if (status) where.status = status;
     if (minAmount) where.amount = { ...where.amount, gte: Number(minAmount) };
     if (maxAmount) where.amount = { ...where.amount, lte: Number(maxAmount) };
@@ -61,7 +58,6 @@ router.get('/', authorize('Payment', 'read'), async (req: AuthRequest, res: Resp
         orderBy: { [sortBy as string]: sortOrder },
         include: {
           booking: { select: { id: true, number: true, unit: { select: { number: true } } } },
-          customer: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
       prisma.payment.count({ where }),
@@ -98,7 +94,6 @@ router.get('/:id', authorize('Payment', 'read'), async (req: AuthRequest, res: R
             project: { select: { name: true } },
           },
         },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       },
     });
 
@@ -130,7 +125,6 @@ router.post('/', authorize('Payment', 'create'), async (req: AuthRequest, res: R
       data: {
         tenantId,
         bookingId: data.bookingId,
-        customerId: data.customerId,
         amount: data.amount,
         status: data.status || 'PENDING',
         paymentDate: data.paymentDate ? new Date(data.paymentDate) : new Date(),
@@ -139,7 +133,6 @@ router.post('/', authorize('Payment', 'create'), async (req: AuthRequest, res: R
       },
       include: {
         booking: { select: { id: true, number: true } },
-        customer: { select: { id: true, firstName: true, lastName: true } },
       },
     });
 

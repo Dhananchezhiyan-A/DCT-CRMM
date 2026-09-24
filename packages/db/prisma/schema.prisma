@@ -60,14 +60,15 @@ model Tenant {
   auditLogs             AuditLog[]
   reports               Report[]
   reportFolders         ReportFolder[]
+  reportShares          ReportShare[]
+  reportFavorites       ReportFavorite[]
+  reportFolderShares    ReportFolderShare[]
+  reportFolderFavorites ReportFolderFavorite[]
   dashboards            Dashboard[]
   workflows             Workflow[]
   automations           Automation[]
   notifications         Notification[]
   leads                 Lead[]
-  contacts              Contact[]
-  accounts              Account[]
-  customers             Customer[]
   siteVisits            SiteVisit[]
   opportunities         Opportunity[]
   quotations            Quotation[]
@@ -141,8 +142,8 @@ model User {
   teamMemberships          RecordTeamMember[]
   prevLeadOwnerHistory     LeadOwnerHistory[]         @relation("PrevLeadOwner")
   newLeadOwnerHistory      LeadOwnerHistory[]         @relation("NewLeadOwner")
-   leadHistoryChanges       LeadOwnerHistory[]
-   roundRobinMembers        RoundRobinMember[]
+    leadHistoryChanges       LeadOwnerHistory[]
+    roundRobinMembers        RoundRobinMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -565,14 +566,8 @@ enum LeadStatus {
   PROSPECT
   SITE_VISIT_SCHEDULED
   SITE_VISIT_HAPPENED
-  SALES
-  OPPORTUNITY
-  QUOTATION
-  APPROVAL
-  BOOKING
-  DUPLICATE
-  LOST
   BOOKED
+  LOST
 }
 
 enum LeadSource {
@@ -676,8 +671,6 @@ model Lead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts      Contact[]
-  customer      Customer?
   siteVisits    SiteVisit[]
   opportunities Opportunity[]
   quotations    Quotation[]
@@ -691,7 +684,7 @@ model Lead {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, ownerId])
-  @@index([tenantId, phone])
+  @@unique([tenantId, phone])
   @@index([tenantId, email])
   @@index([tenantId, company])
   @@index([tenantId, source])
@@ -699,80 +692,8 @@ model Lead {
   @@unique([tenantId, leadNumber])
 }
 
-model Contact {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  leadId    String?
-  lead      Lead?    @relation(fields: [leadId], references: [id])
-  accountId String?
-  account   Account? @relation(fields: [accountId], references: [id])
-
-  firstName  String
-  lastName   String?
-  email      String?
-  phone      String
-  title      String?
-  department String?
-  isPrimary  Boolean  @default(false)
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([tenantId])
-  @@index([tenantId, createdAt])
-  @@index([leadId])
-  @@index([accountId])
-}
-
-model Account {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  industry  String?
-  website   String?
-  phone     String?
-  email     String?
-  address   String?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  contacts  Contact[]
-  customers Customer[]
-
-  @@index([tenantId])
-  @@index([tenantId, createdAt])
-}
-
-model Customer {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  leadId    String?  @unique
-  lead      Lead?    @relation(fields: [leadId], references: [id])
-  accountId String?
-  account   Account? @relation(fields: [accountId], references: [id])
-
-  firstName String
-  lastName  String?
-  email     String?
-  phone     String
-  address   String?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  bookings Booking[]
-  payments Payment[]
-
-  @@index([tenantId])
-  @@index([leadId])
-}
-
 // ============================================
-// PRESALES & SITE VISITS
+// SITE VISITS
 // ============================================
 
 enum SiteVisitStatus {
@@ -976,8 +897,6 @@ model Booking {
   project       Project      @relation(fields: [projectId], references: [id])
   unitId        String
   unit          Unit         @relation(fields: [unitId], references: [id])
-  customerId    String?
-  customer      Customer?    @relation(fields: [customerId], references: [id])
   ownerId       String?
   owner         User?        @relation("BookingOwner", fields: [ownerId], references: [id])
   creatorId     String
@@ -1019,8 +938,6 @@ model Payment {
   tenant     Tenant    @relation(fields: [tenantId], references: [id])
   bookingId  String
   booking    Booking   @relation(fields: [bookingId], references: [id])
-  customerId String?
-  customer   Customer? @relation(fields: [customerId], references: [id])
 
   amount      Float
   status      PaymentStatus @default(PENDING)
@@ -1276,45 +1193,122 @@ model Automation {
 // REPORTS & DASHBOARDS
 // ============================================
 
+enum ReportVisibility {
+  PRIVATE
+  PUBLIC
+  SHARED
+}
+
 model ReportFolder {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
   name        String
   description String?
-  isShared    Boolean  @default(false)
+  visibility  ReportVisibility  @default(PRIVATE)
+  isShared    Boolean           @default(false)
+  deletedAt   DateTime?
+  modifiedBy  String?
   createdBy   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
-  reports Report[]
+  reports   Report[]
+  favorites ReportFolderFavorite[]
+  shares    ReportFolderShare[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
 }
 
 model Report {
-  id          String        @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
-  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
   folderId    String?
-  folder      ReportFolder? @relation(fields: [folderId], references: [id])
+  folder      ReportFolder?     @relation(fields: [folderId], references: [id])
   name        String
   description String?
   type        String
   objectName  String
   columns     Json
+  config      Json?
   filters     Json?
   groupBy     String?
   sortBy      String?
-  isShared    Boolean       @default(false)
+  isShared    Boolean           @default(false)
+  deletedAt   DateTime?
+  modifiedBy  String?
   createdBy   String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  favorites ReportFavorite[]
+  shares    ReportShare[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
   @@index([folderId])
+}
+
+model ReportShare {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId      String?
+  roleId      String?
+  accessLevel String   @default("VIEWER")
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, reportId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model ReportFavorite {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  reportId  String
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, userId])
+  @@index([tenantId, userId])
+}
+
+model ReportFolderShare {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  folderId    String
+  folder      ReportFolder  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  userId      String?
+  roleId      String?
+  accessLevel String        @default("VIEWER")
+  createdBy   String
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId, folderId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model ReportFolderFavorite {
+  id        String       @id @default(cuid())
+  tenantId  String
+  tenant    Tenant       @relation(fields: [tenantId], references: [id])
+  folderId  String
+  folder    ReportFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime     @default(now())
+
+  @@unique([folderId, userId])
+  @@index([tenantId, userId])
 }
 
 model Dashboard {

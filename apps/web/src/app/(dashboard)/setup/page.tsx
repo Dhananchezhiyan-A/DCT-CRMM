@@ -9,7 +9,6 @@ import {
   Building2,
   ClipboardList,
   FileKey2,
-  FileText,
   GitBranch,
   KeyRound,
   LayoutTemplate,
@@ -17,7 +16,6 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  Webhook,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -49,25 +47,13 @@ const groups = [
     ],
   },
   {
-    title: "Automation",
-    description: "Keep operational work moving automatically.",
-    items: [{ label: "Workflow Rules", href: "/setup/automation/workflows", icon: GitBranch }],
-  },
-  {
     title: "Data Administration",
     description: "Prepare the system for data operations.",
     items: [
-      { label: "Reports", href: "/setup/data/reports", icon: FileText },
-      { label: "Import and Export", href: "/setup/data/import-export", icon: ClipboardList },
-    ],
-  },
-  {
-    title: "Developer",
-    description: "Connect external systems securely.",
-    items: [
-      { label: "API Keys", href: "/setup/developer/api-keys", icon: FileKey2 },
-      { label: "Webhooks", href: "/setup/developer/webhooks", icon: Webhook },
-      { label: "Email", href: "/setup/developer/email", icon: Mail },
+      { label: "Data Import", href: "/setup/data/import", icon: ClipboardList },
+      { label: "Data Export", href: "/setup/data/export", icon: ClipboardList },
+      { label: "Duplicate Management", href: "/setup/data/duplicate-management", icon: ClipboardList },
+      { label: "Recycle Bin", href: "/setup/data/recycle-bin", icon: ClipboardList },
     ],
   },
 ];

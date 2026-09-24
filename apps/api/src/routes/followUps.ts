@@ -135,7 +135,8 @@ router.post('/', authorize('FollowUp', 'create'), async (req: AuthRequest, res: 
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
-        action: 'CREATE',
+        leadId: data.leadId || undefined,
+        action: 'FOLLOW_UP_CREATED',
         objectType: 'FollowUp',
         objectId: followUp.id,
         newValues: data,
@@ -180,6 +181,7 @@ router.put('/:id', authorize('FollowUp', 'edit'), async (req: AuthRequest, res: 
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: existingFollowUp.leadId || undefined,
         action: 'UPDATE',
         objectType: 'FollowUp',
         objectId: followUp.id,
@@ -251,6 +253,7 @@ router.put('/:id/complete', authorize('FollowUp', 'edit'), async (req: AuthReque
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: followUp.leadId || undefined,
         action: 'STATUS_CHANGE',
         objectType: 'FollowUp',
         objectId: followUp.id,

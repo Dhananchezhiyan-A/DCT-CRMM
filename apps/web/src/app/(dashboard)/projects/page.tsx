@@ -7,7 +7,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/crm/data-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import { Plus, MoreHorizontal, Eye, Edit, Trash2, Building2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -16,6 +17,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { projectApi } from "@/lib/api";
+import { formatDate } from "@/lib/date-format";
 
 interface Project {
   id: string;
@@ -30,57 +33,6 @@ interface Project {
   expectedCompletion: string;
 }
 
-const projects: Project[] = [
-  {
-    id: "1",
-    name: "Premium Tower",
-    location: "Mumbai, Maharashtra",
-    type: "residential",
-    totalUnits: 200,
-    soldUnits: 145,
-    status: "under-construction",
-    completionPercentage: 65,
-    startDate: "2023-06-01T00:00:00Z",
-    expectedCompletion: "2025-12-31T00:00:00Z",
-  },
-  {
-    id: "2",
-    name: "Commercial Complex",
-    location: "Pune, Maharashtra",
-    type: "commercial",
-    totalUnits: 50,
-    soldUnits: 32,
-    status: "under-construction",
-    completionPercentage: 45,
-    startDate: "2023-09-01T00:00:00Z",
-    expectedCompletion: "2025-06-30T00:00:00Z",
-  },
-  {
-    id: "3",
-    name: "Residential Project",
-    location: "Thane, Maharashtra",
-    type: "residential",
-    totalUnits: 150,
-    soldUnits: 150,
-    status: "completed",
-    completionPercentage: 100,
-    startDate: "2022-01-01T00:00:00Z",
-    expectedCompletion: "2024-06-30T00:00:00Z",
-  },
-  {
-    id: "4",
-    name: "Luxury Villas",
-    location: "Navi Mumbai, Maharashtra",
-    type: "residential",
-    totalUnits: 30,
-    soldUnits: 8,
-    status: "planning",
-    completionPercentage: 0,
-    startDate: "2024-06-01T00:00:00Z",
-    expectedCompletion: "2026-12-31T00:00:00Z",
-  },
-];
-
 const statusColors: Record<string, string> = {
   planning: "bg-yellow-100 text-yellow-800",
   "under-construction": "bg-blue-100 text-blue-800",
@@ -92,6 +44,31 @@ const typeColors: Record<string, string> = {
   commercial: "bg-orange-100 text-orange-800",
   mixed: "bg-indigo-100 text-indigo-800",
 };
+
+function mapProject(item: any): Project {
+  const statusMap: Record<string, Project["status"]> = {
+    PLANNING: "planning",
+    PLANNED: "planning",
+    UNDER_CONSTRUCTION: "under-construction",
+    "UNDER-CONSTRUCTION": "under-construction",
+    ONGOING: "under-construction",
+    COMPLETED: "completed",
+    ACTIVE: "under-construction",
+  };
+  const total = item.totalUnits ?? item._count?.units ?? 0;
+  return {
+    id: item.id,
+    name: item.name || "Project",
+    location: [item.city, item.state].filter(Boolean).join(", ") || item.address || "—",
+    type: "residential",
+    totalUnits: total,
+    soldUnits: item.soldUnits ?? 0,
+    status: statusMap[(item.status || "").toUpperCase()] || "planning",
+    completionPercentage: item.completionPercentage ?? 0,
+    startDate: item.startDate || item.createdAt,
+    expectedCompletion: item.expectedCompletion || item.endDate || item.createdAt,
+  };
+}
 
 const columns: ColumnDef<Project>[] = [
   {
@@ -113,7 +90,7 @@ const columns: ColumnDef<Project>[] = [
     cell: ({ row }) => {
       const type = row.getValue("type") as string;
       return (
-        <Badge className={typeColors[type]}>
+        <Badge className={typeColors[type] || "bg-gray-100 text-gray-800"}>
           {type}
         </Badge>
       );
@@ -150,12 +127,17 @@ const columns: ColumnDef<Project>[] = [
     },
   },
   {
+    accessorKey: "startDate",
+    header: "Start",
+    cell: ({ row }) => formatDate(row.getValue("startDate") as string),
+  },
+  {
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       return (
-        <Badge className={statusColors[status]}>
+        <Badge className={statusColors[status] || "bg-gray-100 text-gray-800"}>
           {status.replace("-", " ")}
         </Badge>
       );
@@ -198,6 +180,52 @@ export default function ProjectsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [totalItems, setTotalItems] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setIsLoading(true);
+        const res = await projectApi.list({ page: currentPage, limit: 20 });
+        if (res.data.success && res.data.data) {
+          const mapped = res.data.data.map(mapProject);
+          setProjects(mapped);
+          setTotalItems(res.data.pagination?.total ?? mapped.length);
+        } else {
+          setProjects([]);
+          setTotalItems(0);
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to load projects", variant: "destructive" as any });
+        setProjects([]);
+        setTotalItems(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchProjects();
+  }, [currentPage, toast]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -265,7 +293,7 @@ export default function ProjectsPage() {
         data={projects}
         searchKey="name"
         searchPlaceholder="Search projects..."
-        totalItems={projects.length}
+        totalItems={totalItems}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
       />

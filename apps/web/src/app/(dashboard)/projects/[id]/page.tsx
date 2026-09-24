@@ -1,16 +1,31 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { cn } from "@/lib/utils";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { useToast } from "@/hooks/use-toast";
+
+import { projectApi, unitApi } from "@/lib/api";
+
 import {
   ArrowLeft,
   Edit,
@@ -45,34 +60,54 @@ interface Unit {
   area: number;
   price: number;
   status: "available" | "booked" | "sold" | "reserved";
-  customerName?: string;
+  leadName?: string;
 }
 
-const mockProject: ProjectData = {
-  id: "1",
-  name: "Premium Tower",
-  location: "Mumbai, Maharashtra",
-  description: "Premium residential tower with world-class amenities and stunning city views.",
-  type: "residential",
-  totalUnits: 200,
-  soldUnits: 145,
-  availableUnits: 55,
-  status: "under-construction",
-  completionPercentage: 65,
-  startDate: "2023-06-01T00:00:00Z",
-  expectedCompletion: "2025-12-31T00:00:00Z",
-};
+function mapProject(item: any): ProjectData {
+  const statusMap: Record<string, ProjectData["status"]> = {
+    PLANNING: "planning",
+    PLANNED: "planning",
+    "UNDER_CONSTRUCTION": "under-construction",
+    "UNDER-CONSTRUCTION": "under-construction",
+    ONGOING: "under-construction",
+    COMPLETED: "completed",
+    ACTIVE: "under-construction",
+  };
+  const units = item.units || [];
+  const sold = units.filter((u: any) => u.status === "SOLD" || u.status === "sold").length;
+  const available = units.filter((u: any) => u.status === "AVAILABLE" || u.status === "available" || !u.status).length;
+  const total = item.totalUnits || units.length || 0;
+  return {
+    id: item.id,
+    name: item.name || "Project",
+    location: [item.city, item.state].filter(Boolean).join(", ") || item.address || "—",
+    description: item.description || "",
+    type: "residential",
+    totalUnits: total,
+    soldUnits: sold,
+    availableUnits: available,
+    status: statusMap[(item.status || "").toUpperCase()] || "planning",
+    completionPercentage: total > 0 ? Math.round((sold / total) * 100) : 0,
+    startDate: item.startDate || item.createdAt,
+    expectedCompletion: item.expectedCompletion || item.endDate || item.createdAt,
+  };
+}
 
-const mockUnits: Unit[] = [
-  { id: "1", unitNumber: "101", type: "2BHK", floor: 1, area: 1200, price: 7500000, status: "sold", customerName: "John Smith" },
-  { id: "2", unitNumber: "102", type: "2BHK", floor: 1, area: 1200, price: 7500000, status: "sold", customerName: "Jane Doe" },
-  { id: "3", unitNumber: "103", type: "3BHK", floor: 1, area: 1800, price: 12000000, status: "available" },
-  { id: "4", unitNumber: "201", type: "2BHK", floor: 2, area: 1200, price: 7800000, status: "booked", customerName: "Raj Patel" },
-  { id: "5", unitNumber: "202", type: "3BHK", floor: 2, area: 1800, price: 12500000, status: "available" },
-  { id: "6", unitNumber: "203", type: "3BHK", floor: 2, area: 1800, price: 12500000, status: "sold", customerName: "Priya Gupta" },
-  { id: "7", unitNumber: "301", type: "2BHK", floor: 3, area: 1200, price: 8000000, status: "available" },
-  { id: "8", unitNumber: "302", type: "3BHK", floor: 3, area: 1800, price: 13000000, status: "sold", customerName: "Amit Singh" },
-];
+function mapUnit(item: any): Unit {
+  const status = (item.status || "available").toLowerCase();
+  return {
+    id: item.id,
+    unitNumber: item.number || item.unitNumber || item.id.slice(-4),
+    type: item.type || "—",
+    floor: item.floor ?? 1,
+    area: item.area ?? 0,
+    price: item.price ?? 0,
+    status: (["available", "booked", "sold", "reserved"].includes(status) ? status : "available") as Unit["status"],
+    leadName: item.lead
+      ? `${item.lead.firstName} ${item.lead.lastName}`.trim()
+      : undefined,
+  };
+}
 
 const statusColors: Record<string, string> = {
   available: "bg-green-100 text-green-800 border-green-300",
@@ -99,12 +134,37 @@ export default function ProjectDetailPage() {
   const [selectedFloor, setSelectedFloor] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    setTimeout(() => {
-      setProject(mockProject);
-      setUnits(mockUnits);
-      setIsLoading(false);
-    }, 500);
-  }, [params.id]);
+    const fetchProject = async () => {
+      try {
+        setIsLoading(true);
+        const res = await projectApi.get(params.id as string);
+        if (res.data.success && res.data.data) {
+          const raw = res.data.data;
+          setProject(mapProject(raw));
+          const mappedUnits = (raw.units || []).map(mapUnit);
+          setUnits(mappedUnits);
+          if (mappedUnits.length === 0) {
+            try {
+              const unitRes = await unitApi.list({ projectId: params.id, limit: 200 });
+              if (unitRes.data.success && unitRes.data.data) {
+                setUnits(unitRes.data.data.map(mapUnit));
+              }
+            } catch {
+              // unit list optional when project has no units relation populated
+            }
+          }
+        } else {
+          toast({ title: "Error", description: "Project not found", variant: "destructive" as any });
+          router.push("/projects");
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to load project", variant: "destructive" as any });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchProject();
+  }, [params.id, router, toast]);
 
   const floors = Array.from(new Set(units.map((u) => u.floor))).sort((a, b) => a - b);
 
@@ -271,9 +331,9 @@ export default function ProjectDetailPage() {
                     <p>Floor: {unit.floor}</p>
                     <p>Area: {unit.area} sq ft</p>
                     <p className="font-medium">{formatCurrency(unit.price)}</p>
-                    {unit.customerName && (
+                    {unit.leadName && (
                       <p className="text-muted-foreground">
-                        Customer: {unit.customerName}
+                        Lead: {unit.leadName}
                       </p>
                     )}
                   </div>
@@ -302,11 +362,11 @@ export default function ProjectDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Start Date</p>
-                  <p>{new Date(project.startDate).toLocaleDateString()}</p>
+                  <p>{formatDate(project.startDate)}</p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Expected Completion</p>
-                  <p>{new Date(project.expectedCompletion).toLocaleDateString()}</p>
+                  <p>{formatDate(project.expectedCompletion)}</p>
                 </div>
               </div>
             </CardContent>

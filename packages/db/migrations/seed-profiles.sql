@@ -175,7 +175,7 @@ BEGIN
     'Manager',
     'Manager profile - access to all lead statuses',
     false,
-    '{"statuses": ["NEW", "INCOMING", "PROSPECT", "SITE_VISIT_SCHEDULED", "SITE_VISIT_HAPPENED", "SALES", "OPPORTUNITY", "QUOTATION", "APPROVAL", "BOOKING", "DUPLICATE", "LOST", "BOOKED"]}'::jsonb,
+    '{"statuses": ["NEW", "INCOMING", "PROSPECT", "SITE_VISIT_SCHEDULED", "SITE_VISIT_HAPPENED", "BOOKED", "LOST"]}'::jsonb,
     NOW(),
     NOW()
   )
@@ -196,7 +196,7 @@ BEGIN
     'CRM Admin',
     'CRM Admin profile - full access to all lead statuses',
     false,
-    '{"statuses": ["NEW", "INCOMING", "PROSPECT", "SITE_VISIT_SCHEDULED", "SITE_VISIT_HAPPENED", "SALES", "OPPORTUNITY", "QUOTATION", "APPROVAL", "BOOKING", "DUPLICATE", "LOST", "BOOKED"]}'::jsonb,
+    '{"statuses": ["NEW", "INCOMING", "PROSPECT", "SITE_VISIT_SCHEDULED", "SITE_VISIT_HAPPENED", "BOOKED", "LOST"]}'::jsonb,
     NOW(),
     NOW()
   )

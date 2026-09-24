@@ -135,7 +135,6 @@ def detect_intent(message: str):
     pay_words = ["payment", "payments"]
     proj_words = ["project", "projects"]
     unit_words = ["unit", "units", "inventory"]
-    cust_words = ["customer", "customers"]
     task_words = ["task", "tasks"]
     follow_words = ["follow-up", "follow up", "followups"]
     user_words = ["user", "users", "salesperson", "salesperson", "team"]
@@ -161,8 +160,6 @@ def detect_intent(message: str):
         entity = "unit"
     elif any(w in msg for w in proj_words):
         entity = "project"
-    elif any(w in msg for w in cust_words):
-        entity = "customer"
     elif any(w in msg for w in task_words):
         entity = "task"
     elif any(w in msg for w in follow_words):
@@ -574,11 +571,6 @@ def build_unit_response(data: dict, params: dict):
     return f"**Units**\n\nTotal: {format_number(total)}\nAvailable: {format_number(available)}", "kpi"
 
 
-def build_customer_response(data: dict, params: dict):
-    total = data.get("total", 0)
-    return f"**Customers**\n\nTotal: {format_number(total)}", "kpi"
-
-
 def build_task_response(data: dict, params: dict):
     action = params.get("action", "count")
     total = data.get("total", 0)
@@ -618,10 +610,6 @@ def build_summary_response(data: dict, params: dict):
     lines = ["**CRM Summary**\n"]
     if "leads" in data:
         lines.append(f"Leads: {format_number(data['leads'])}")
-    if "contacts" in data:
-        lines.append(f"Contacts: {format_number(data['contacts'])}")
-    if "customers" in data:
-        lines.append(f"Customers: {format_number(data['customers'])}")
     if "opportunities" in data:
         lines.append(f"Opportunities: {format_number(data['opportunities'])}")
     if "bookings" in data:
@@ -642,7 +630,6 @@ ENTITY_TO_API = {
     "payment": "/api/analytics/payments",
     "project": "/api/analytics/projects",
     "unit": "/api/units",
-    "customer": "/api/customers",
     "task": "/api/tasks",
     "follow_up": "/api/follow-ups",
     "user": "/api/analytics/leads",
@@ -658,7 +645,6 @@ ENTITY_TO_RESPONSE_BUILDER = {
     "payment": build_payment_response,
     "project": build_project_response,
     "unit": build_unit_response,
-    "customer": build_customer_response,
     "task": build_task_response,
     "follow_up": build_followup_response,
     "user": build_user_response,
@@ -693,7 +679,7 @@ async def chat(request: ChatRequest, user=Depends(verify_token)):
 
     if entity == "greeting":
         return ChatResponse(
-            response="Hello! I'm your DCT AI Assistant. You can ask me about leads, site visits, opportunities, bookings, payments, projects, units, customers, reports and dashboards.",
+            response="Hello! I'm your DCT AI Assistant. You can ask me about leads, site visits, opportunities, bookings, payments, projects, units, reports and dashboards.",
             conversation_id=request.conversation_id or f"conv_{user.get('id')}_{datetime.now().timestamp()}",
         )
 
@@ -708,7 +694,7 @@ async def chat(request: ChatRequest, user=Depends(verify_token)):
                 "**Payments**: \"pending payments\", \"this month revenue\"\n"
                 "**Projects**: \"project overview\", \"unit availability\"\n"
                 "**Units**: \"available units\", \"unit status\"\n"
-                "**Customers**: \"customer count\"\n\n"
+                "**Tasks**: \"pending tasks\", \"tasks by status\"\n\n"
                 "Try: \"today leads\", \"this month revenue\", \"lead status\", \"show pipeline\""
             ),
             conversation_id=request.conversation_id or f"conv_{user.get('id')}_{datetime.now().timestamp()}",
@@ -725,7 +711,7 @@ async def chat(request: ChatRequest, user=Depends(verify_token)):
         return ChatResponse(
             response=(
                 "I can help with DCT CRM data such as leads, site visits, opportunities, "
-                "quotations, bookings, payments, projects, units, customers, tasks, and dashboards.\n\n"
+                "quotations, bookings, payments, projects, units, tasks, and dashboards.\n\n"
                 "Try: \"today leads\", \"this month revenue\", \"lead status\", \"show pipeline\""
             ),
             conversation_id=request.conversation_id or f"conv_{user.get('id')}_{datetime.now().timestamp()}",
@@ -790,25 +776,6 @@ async def chat(request: ChatRequest, user=Depends(verify_token)):
         except Exception as e:
             return ChatResponse(
                 response="I couldn't retrieve unit data right now. Please try again.",
-                conversation_id=conversation_id,
-            )
-
-    if entity == "customer":
-        try:
-            result = await call_node_api("/api/customers", "GET", None, token_val)
-            data = result.get("data", {})
-            total = data.get("total", 0) if isinstance(data, dict) else len(data)
-            builder = ENTITY_TO_RESPONSE_BUILDER.get(entity)
-            response_text, resp_type = builder({"total": total}, params)
-            return ChatResponse(
-                response=response_text,
-                conversation_id=conversation_id,
-                response_type=resp_type,
-                data={"total": total},
-            )
-        except Exception as e:
-            return ChatResponse(
-                response="I couldn't retrieve customer data right now. Please try again.",
                 conversation_id=conversation_id,
             )
 

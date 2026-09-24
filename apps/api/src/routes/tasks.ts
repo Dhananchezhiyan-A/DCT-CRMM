@@ -146,7 +146,8 @@ router.post('/', authorize('Task', 'create'), async (req: AuthRequest, res: Resp
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
-        action: 'CREATE',
+        leadId: data.leadId || undefined,
+        action: 'TASK_CREATED',
         objectType: 'Task',
         objectId: task.id,
         newValues: data,
@@ -192,7 +193,8 @@ router.put('/:id', authorize('Task', 'edit'), async (req: AuthRequest, res: Resp
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
-        action: 'UPDATE',
+        leadId: existingTask.leadId || undefined,
+        action: 'TASK_UPDATED',
         objectType: 'Task',
         objectId: task.id,
         oldValues: existingTask,
@@ -263,7 +265,8 @@ router.put('/:id/status', authorize('Task', 'edit'), async (req: AuthRequest, re
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
-        action: 'STATUS_CHANGE',
+        leadId: task.leadId || undefined,
+        action: status === 'COMPLETED' ? 'TASK_COMPLETED' : 'STATUS_CHANGE',
         objectType: 'Task',
         objectId: task.id,
         oldValues: { status: task.status },
@@ -301,6 +304,7 @@ router.put('/:id/assign', authorize('Task', 'edit'), async (req: AuthRequest, re
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: task.leadId || undefined,
         action: 'ASSIGN',
         objectType: 'Task',
         objectId: task.id,

@@ -5,7 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
 import { authorize } from '../middleware/authorization';
 import { auditLog } from '../middleware/audit';
-import { ApiResponse, PaginatedResponse } from '../types';
+import { PaginatedResponse } from '../types';
 import { Prisma } from '@prisma/client';
 
 const router = Router();
@@ -105,7 +105,7 @@ router.get('/:id', authenticate, authorize('Unit', 'read'), async (req: AuthRequ
       include: {
         project: { select: { id: true, name: true, address: true } },
         bookings: { 
-          select: { id: true, number: true, status: true, bookingDate: true, customer: { select: { firstName: true, lastName: true } } },
+          select: { id: true, number: true, status: true, bookingDate: true, lead: { select: { firstName: true, lastName: true } } },
           orderBy: { createdAt: 'desc' },
           take: 5,
         },

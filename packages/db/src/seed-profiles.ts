@@ -22,6 +22,12 @@ const PROFILE_DEFINITIONS = [
     isDefault: false,
   },
   {
+    name: 'Sales',
+    description: 'Sales profile for site visit completion and opportunity handling',
+    isAdmin: false,
+    isDefault: false,
+  },
+  {
     name: 'Presales',
     description: 'Presales profile for site visits and project support',
     isAdmin: false,
@@ -52,12 +58,8 @@ const PROFILE_PERMISSIONS: Record<string, string[]> = {
     'BOOKING_READ',
     'BOOKING_CREATE',
     'BOOKING_UPDATE',
-    'CONTACT_READ',
-    'CONTACT_CREATE',
-    'CONTACT_UPDATE',
-    'CUSTOMER_READ',
-    'CUSTOMER_CREATE',
-    'CUSTOMER_UPDATE',
+    'SITE_VISIT_READ',
+    'SITE_VISIT_UPDATE',
     'REPORT_VIEW',
     'DASHBOARD_READ',
     'TASK_READ',
@@ -71,10 +73,23 @@ const PROFILE_PERMISSIONS: Record<string, string[]> = {
     'OPPORTUNITY_READ',
     'OPPORTUNITY_CREATE',
     'OPPORTUNITY_UPDATE',
-    'CONTACT_READ',
-    'CONTACT_CREATE',
-    'CONTACT_UPDATE',
-    'CUSTOMER_READ',
+    'SITE_VISIT_READ',
+    'SITE_VISIT_UPDATE',
+    'TASK_READ',
+    'TASK_CREATE',
+    'TASK_UPDATE',
+    'REPORT_VIEW',
+    'DASHBOARD_READ',
+  ],
+  Sales: [
+    'LEAD_READ',
+    'LEAD_CREATE',
+    'LEAD_UPDATE',
+    'OPPORTUNITY_READ',
+    'OPPORTUNITY_CREATE',
+    'OPPORTUNITY_UPDATE',
+    'SITE_VISIT_READ',
+    'SITE_VISIT_UPDATE',
     'TASK_READ',
     'TASK_CREATE',
     'TASK_UPDATE',
@@ -88,9 +103,6 @@ const PROFILE_PERMISSIONS: Record<string, string[]> = {
     'SITE_VISIT_UPDATE',
     'PROJECT_READ',
     'PROJECT_UPDATE',
-    'CONTACT_READ',
-    'CONTACT_CREATE',
-    'CONTACT_UPDATE',
     'REPORT_VIEW',
   ],
   Finance: [
@@ -107,6 +119,13 @@ const PROFILE_PERMISSIONS: Record<string, string[]> = {
     'DASHBOARD_READ',
   ],
 };
+
+const DATA_ADMINISTRATION_PERMISSIONS = [
+  'DATA_IMPORT',
+  'DATA_EXPORT',
+  'DUPLICATE_MANAGEMENT',
+  'RECYCLE_BIN',
+];
 
 async function main() {
   console.log('Seeding CRM profiles and profile permissions...');
@@ -129,8 +148,17 @@ async function main() {
     });
 
     if (existing) {
-      createdProfiles[profile.name] = existing;
-      console.log(`Profile already exists: ${profile.name}`);
+      const updated = await prisma.profile.update({
+        where: { id: existing.id },
+        data: {
+          description: profile.description,
+          isAdmin: profile.isAdmin,
+          isDefault: profile.isDefault,
+        },
+        select: { id: true, name: true },
+      });
+      createdProfiles[profile.name] = updated;
+      console.log(`Profile already exists (updated): ${profile.name}`);
       continue;
     }
 
@@ -150,18 +178,22 @@ async function main() {
   }
 
   const allPermissionNames = new Set<string>();
+  for (const name of DATA_ADMINISTRATION_PERMISSIONS) allPermissionNames.add(name);
   for (const names of Object.values(PROFILE_PERMISSIONS)) {
     for (const name of names) allPermissionNames.add(name);
   }
 
   for (const permissionName of allPermissionNames) {
+    const module = DATA_ADMINISTRATION_PERMISSIONS.includes(permissionName)
+      ? 'DATA'
+      : permissionName.split('_')[0];
     await prisma.permission.upsert({
       where: { name: permissionName },
-      update: {},
+      update: { module },
       create: {
         name: permissionName,
         label: permissionName.replace(/_/g, ' '),
-        module: permissionName.split('_')[0],
+        module,
         action: permissionName.split('_').slice(1).join('_') || 'READ',
       },
     });
@@ -184,8 +216,8 @@ async function main() {
       .map((p) => permissionIdMap.get(p))
       .filter((id): id is string => Boolean(id));
 
+    await prisma.userProfilePermission.deleteMany({ where: { profileId: profile.id } });
     if (validIds.length > 0) {
-      await prisma.userProfilePermission.deleteMany({ where: { profileId: profile.id } });
       await prisma.userProfilePermission.createMany({
         data: validIds.map((permissionId) => ({ profileId: profile.id, permissionId })),
       });
@@ -193,6 +225,18 @@ async function main() {
 
     console.log(`Assigned ${validIds.length} permissions to ${profileName}`);
   }
+
+  const leftover = await prisma.permission.deleteMany({
+    where: {
+      OR: [
+        { name: { startsWith: 'CONTACT_' } },
+        { name: { startsWith: 'CUSTOMER_' } },
+        { name: { startsWith: 'ACCOUNT_' } },
+        { module: { in: ['CONTACT', 'CUSTOMER', 'ACCOUNT'] } },
+      ],
+    },
+  });
+  console.log(`Removed ${leftover.count} leftover Contact/Customer/Account permissions`);
 
   const usersToAssign = [
     { email: 'admin@dctcrm.com', profileName: 'Admin' },

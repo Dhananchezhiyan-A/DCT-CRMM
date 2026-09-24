@@ -100,11 +100,11 @@ const STANDARD_LEAD_FIELDS: FieldSeed[] = [
   },
   {
     name: 'phone', label: 'Phone', fieldType: 'phone',
-    isStandardField: true, isCustomField: false,
+    required: true, isStandardField: true, isCustomField: false,
     displayOrder: 15, searchable: true, sortable: true, filterable: true,
   },
   {
-    name: 'mobile', label: 'Mobile', fieldType: 'phone',
+    name: 'mobile', label: 'Secondary Phone', fieldType: 'phone',
     isStandardField: true, isCustomField: false,
     displayOrder: 16, searchable: true, sortable: true,
   },
@@ -155,7 +155,7 @@ const STANDARD_LEAD_FIELDS: FieldSeed[] = [
 
   // Lead Management
   {
-    name: 'leadSource', label: 'Lead Source', fieldType: 'picklist',
+    name: 'source', label: 'Lead Source', fieldType: 'picklist',
     isStandardField: true, isCustomField: false,
     displayOrder: 30, searchable: true, sortable: true, filterable: true,
     picklistValues: [
@@ -173,7 +173,7 @@ const STANDARD_LEAD_FIELDS: FieldSeed[] = [
     ],
   },
   {
-    name: 'leadStatus', label: 'Lead Status', fieldType: 'picklist',
+    name: 'status', label: 'Lead Status', fieldType: 'picklist',
     isStandardField: true, isCustomField: false,
     displayOrder: 31, searchable: true, sortable: true, filterable: true,
     picklistValues: [
@@ -204,7 +204,7 @@ const STANDARD_LEAD_FIELDS: FieldSeed[] = [
   {
     name: 'score', label: 'Score', fieldType: 'number',
     isSystemField: true, isCustomField: false, isStandardField: true,
-    displayOrder: 34, sortable: true, filterable: true, editable: false, minValue: 0, maxValue: 100,
+    displayOrder: 34, sortable: true, filterable: true, editable: false, minValue: 0, maxValue: 100, visible: false,
   },
 
   // Address
@@ -282,6 +282,18 @@ async function seedLeadFieldsForTenant(tenantId: string, createdBy: string) {
           data: { isStandardField: true, isCustomField: fieldSeed.isCustomField ?? false },
         });
       }
+      if (fieldSeed.label && existing.label !== fieldSeed.label) {
+        await prisma.fieldDefinition.update({
+          where: { id: existing.id },
+          data: { label: fieldSeed.label },
+        });
+      }
+      if (fieldSeed.visible !== undefined && existing.visible !== fieldSeed.visible) {
+        await prisma.fieldDefinition.update({
+          where: { id: existing.id },
+          data: { visible: fieldSeed.visible },
+        });
+      }
       skippedCount++;
       continue;
     }
@@ -333,7 +345,7 @@ async function seedLeadFieldsForTenant(tenantId: string, createdBy: string) {
         sections: JSON.stringify([
           {
             name: 'Contact Information',
-            fields: ['salutation', 'firstName', 'lastName', 'title', 'email', 'phone', 'mobile', 'website'],
+            fields: ['salutation', 'firstName', 'lastName', 'title', 'email', 'phone', 'mobile'],
           },
           {
             name: 'Company Information',
@@ -341,7 +353,7 @@ async function seedLeadFieldsForTenant(tenantId: string, createdBy: string) {
           },
           {
             name: 'Lead Details',
-            fields: ['leadSource', 'leadStatus', 'rating', 'description', 'score'],
+            fields: ['source', 'status', 'rating', 'description'],
           },
           {
             name: 'Address',

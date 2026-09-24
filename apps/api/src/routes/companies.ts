@@ -522,9 +522,6 @@ router.delete('/companies/:id', async (req: AuthRequest, res: Response) => {
           select: {
             users: true,
             leads: true,
-            contacts: true,
-            accounts: true,
-            customers: true,
             opportunities: true,
             quotations: true,
             bookings: true,

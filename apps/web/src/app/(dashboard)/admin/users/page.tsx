@@ -1,12 +1,21 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useRouter } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
+
 import {
   Dialog,
   DialogContent,
@@ -15,6 +24,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,12 +35,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
 import {
   Select,
   SelectContent,
@@ -38,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import {
   Table,
   TableBody,
@@ -46,10 +59,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { userApi, profileApi, newPermissionSetApi, userPermissionApi, effectivePermissionApi, permissionApi } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import {
   Plus,
   MoreHorizontal,
@@ -518,7 +536,7 @@ export default function UsersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}
+                        {user.createdAt ? formatDate(user.createdAt) : "-"}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -618,7 +636,7 @@ export default function UsersPage() {
                 <div>
                   <Label className="text-muted-foreground">Created Date</Label>
                   <p className="font-medium">
-                    {viewTarget.createdAt ? new Date(viewTarget.createdAt).toLocaleString() : "-"}
+                    {viewTarget.createdAt ? formatDateTime(viewTarget.createdAt) : "-"}
                   </p>
                 </div>
               </div>

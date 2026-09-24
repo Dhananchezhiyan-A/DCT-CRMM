@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   FileText,
@@ -33,6 +33,15 @@ interface Report {
   sortBy?: string | null;
   sortOrder?: string | null;
   createdAt: string;
+  config?: {
+    showRowCounts?: boolean;
+    showDetailRows?: boolean;
+    showSubtotals?: boolean;
+    showGrandTotal?: boolean;
+    rowGroups?: string[];
+    columnGroups?: string[];
+    groupDateBuckets?: Record<string, "day" | "week" | "month" | "quarter" | "year">;
+  };
 }
 
 interface ReportResult {
@@ -53,6 +62,7 @@ interface ReportResult {
     aggregate?: { function: string; field?: string; label?: string };
     aggregateLabel?: string;
     columns: string[];
+    columnValues?: Record<string, Record<string, string>>;
     rows: { group: string; groupValues?: Record<string, string>; values: Record<string, number> }[];
   };
 }
@@ -63,8 +73,14 @@ interface ReportFilter {
   value: unknown;
 }
 
+interface AvailableReportField {
+  key: string;
+  label: string;
+}
+
 export default function ReportDetailsPage() {
   const params = useParams();
+  const router = useRouter();
   const reportId = params?.id as string;
   const [report, setReport] = React.useState<Report | null>(null);
   const [result, setResult] = React.useState<ReportResult | null>(null);
@@ -77,10 +93,36 @@ export default function ReportDetailsPage() {
   const [resultFrom, setResultFrom] = React.useState("");
   const [resultTo, setResultTo] = React.useState("");
   const [resultSearch, setResultSearch] = React.useState("");
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({});
+  const [showRowCounts, setShowRowCounts] = React.useState(true);
+  const [showDetailRows, setShowDetailRows] = React.useState(true);
+  const [showSubtotals, setShowSubtotals] = React.useState(false);
+  const [showGrandTotal, setShowGrandTotal] = React.useState(true);
+  const [editableFilters, setEditableFilters] = React.useState<ReportFilter[]>([]);
+  const [availableFields, setAvailableFields] = React.useState<AvailableReportField[]>([]);
+  const filtersHydratedRef = React.useRef(false);
+  const transientPreviewRef = React.useRef(false);
+  const previewLoadedRef = React.useRef(false);
 
   const reportFilters = Array.isArray(report?.filters)
     ? (report.filters as ReportFilter[])
     : [];
+  const activeFilters = filtersHydratedRef.current ? editableFilters : reportFilters;
+  const hasGrouping = Boolean(
+    report?.rowGroups?.length ||
+    report?.groupBy ||
+    report?.columnGroups?.length ||
+    report?.groupColumn ||
+    report?.config?.rowGroups?.length ||
+    report?.config?.columnGroups?.length,
+  );
+  const filterFields = Array.from(new Set([
+    ...availableFields.map((field) => field.key),
+    ...(report?.columns || []),
+    ...activeFilters.map((filter) => filter.field),
+  ]));
+  const filterFieldLabel = (field: string) => availableFields.find((item) => item.key === field)?.label || field;
+  const filterOperators = ["equals", "notEquals", "contains", "startsWith", "endsWith", "gt", "gte", "lt", "lte", "isBlank", "isNotBlank"];
   const resultDateFields =
     result?.columns.filter((column) => result.columnTypes?.[column] === "date") || [];
   const activeResultDateField = resultDateField || resultDateFields[0] || "";
@@ -130,21 +172,86 @@ export default function ReportDetailsPage() {
   const filteredGroups = result?.groups || [];
   const filteredPivotRows = result?.pivot?.rows || [];
   const pivotIsAdditive = result?.pivot?.aggregate?.function === "count" || result?.pivot?.aggregate?.function === "sum";
+  const savedRowGroupsFromReport = report?.rowGroups?.length
+    ? report.rowGroups
+    : report?.config?.rowGroups?.length
+      ? report.config.rowGroups
+      : report?.groupBy
+        ? [report.groupBy]
+        : [];
+  const savedColumnGroups = report?.columnGroups?.length
+    ? report.columnGroups
+    : report?.config?.columnGroups?.length
+      ? report.config.columnGroups
+      : report?.groupColumn
+        ? [report.groupColumn]
+        : [];
+  const savedRowGroups = savedRowGroupsFromReport.filter((field) => !savedColumnGroups.includes(field));
+  const pivotColumnHeaders = result?.pivot?.columns.map((column) => ({
+    label: column,
+    primary: result.pivot?.columnValues?.[column]?.[savedColumnGroups[0]] || column,
+    secondary: savedColumnGroups.length > 1 ? result.pivot?.columnValues?.[column]?.[savedColumnGroups[1]] || "(Blank)" : "",
+  })) || [];
 
   const loadReport = React.useCallback(async () => {
     if (!reportId) return;
     try {
       setLoading(true);
       setError("");
-      const response = await fetch(`/api/proxy/api/reports/${reportId}`, {
-        cache: "no-store",
-      });
-      const body = await response.json();
-      if (!response.ok)
-        throw new Error(
-          body?.message || body?.error || "Failed to load report",
-        );
-      setReport(body.data || body.report || null);
+      const isNewPreview = reportId === "preview";
+      const previewKey = `report-preview:${isNewPreview ? "new" : reportId}`;
+      const previewRaw = sessionStorage.getItem(previewKey);
+      let savedReport: Report | null = null;
+      if (isNewPreview) {
+        if (previewLoadedRef.current) return;
+        if (!previewRaw) {
+          router.replace("/reports/new");
+          return;
+        }
+      } else {
+        const response = await fetch(`/api/proxy/api/reports/${reportId}`, {
+          cache: "no-store",
+        });
+        const body = await response.json();
+        if (!response.ok)
+          throw new Error(
+            body?.message || body?.error || "Failed to load report",
+          );
+        savedReport = body.data || body.report || null;
+      }
+      let loadedReport = savedReport;
+      let previewResult: ReportResult | null = null;
+      if (previewRaw) {
+        sessionStorage.removeItem(previewKey);
+        previewLoadedRef.current = true;
+        try {
+          const preview = JSON.parse(previewRaw);
+          previewResult = preview?.result || null;
+          transientPreviewRef.current = Boolean(previewResult);
+          loadedReport = {
+            ...(savedReport || {}),
+            ...(preview?.report || {}),
+            config: { ...savedReport?.config, ...preview?.report?.config },
+          } as Report;
+        } catch {
+          loadedReport = savedReport;
+        }
+      }
+      setReport(loadedReport);
+      if (previewResult) setResult(previewResult);
+      setEditableFilters(Array.isArray(loadedReport?.filters) ? loadedReport.filters : []);
+      filtersHydratedRef.current = true;
+      const metadataResponse = await fetch(`/api/proxy/api/report-metadata/${encodeURIComponent(loadedReport?.objectName || "")}`, { cache: "no-store" });
+      if (metadataResponse.ok) {
+        const metadataBody = await metadataResponse.json();
+        const metadataFields = metadataBody.data?.fields || metadataBody.data?.object?.fields || [];
+        setAvailableFields((Array.isArray(metadataFields) ? metadataFields : []).map((field: any) => ({ key: field.key || field.name, label: field.label || field.key || field.name })).filter((field: AvailableReportField) => field.key));
+      }
+      const config = loadedReport?.config || {};
+      setShowRowCounts(config.showRowCounts !== false);
+      setShowDetailRows(config.showDetailRows !== false);
+      setShowSubtotals(config.showSubtotals === true);
+      setShowGrandTotal(config.showGrandTotal !== false);
     } catch (err: any) {
       setError(err?.message || "Failed to load report");
     } finally {
@@ -155,6 +262,17 @@ export default function ReportDetailsPage() {
   React.useEffect(() => {
     loadReport();
   }, [loadReport]);
+
+  React.useEffect(() => {
+    if (!report || result || running || transientPreviewRef.current) return;
+    void runReport();
+  }, [report]);
+
+  React.useEffect(() => {
+    if (!report || !filtersHydratedRef.current || transientPreviewRef.current) return;
+    const timer = window.setTimeout(() => void runReport(), 350);
+    return () => window.clearTimeout(timer);
+  }, [editableFilters]);
 
   const runReport = async () => {
     if (!report) return;
@@ -172,13 +290,14 @@ export default function ReportDetailsPage() {
         body: JSON.stringify({
           objectName: report.objectName,
           columns: Array.isArray(report.columns) ? report.columns : [],
-          filters: Array.isArray(report.filters) ? report.filters : [],
+          filters: activeFilters,
           filterLogic: report.filterLogic === "OR" ? "OR" : "AND",
           aggregates: Array.isArray(report.aggregates) ? report.aggregates : [],
-          groupBy: report.groupBy || undefined,
-          groupColumn: report.groupColumn || undefined,
-          rowGroups: report.rowGroups || undefined,
-          columnGroups: report.columnGroups || undefined,
+          groupBy: savedRowGroups[0] || undefined,
+          groupColumn: savedColumnGroups[0] || undefined,
+          rowGroups: savedRowGroups.length ? savedRowGroups : undefined,
+          columnGroups: savedColumnGroups.length ? savedColumnGroups : undefined,
+          groupOptions: Object.fromEntries(Object.entries(report.config?.groupDateBuckets || {}).map(([field, dateBucket]) => [field, { dateBucket }])),
           crossFilter: report.crossFilter || undefined,
           sortBy: report.sortBy || undefined,
           sortOrder: report.sortOrder === "asc" ? "asc" : "desc",
@@ -239,46 +358,40 @@ export default function ReportDetailsPage() {
     );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Button variant="ghost" size="sm" asChild className="mb-3 -ml-3">
+    <div className="-m-4 flex min-h-[calc(100vh-64px)] flex-col bg-white md:-m-6">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b bg-slate-50 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <Button variant="ghost" size="sm" asChild className="mb-1 -ml-3 h-7 text-xs">
             <Link href="/reports">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Reports
+              Reports
             </Link>
           </Button>
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-3">
-              <FileText className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">{report.name}</h1>
-              <p className="text-sm text-muted-foreground">
-                {report.objectName} · {report.type}
-              </p>
-            </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            <div className="min-w-0"><p className="text-[11px] text-muted-foreground">Report: {report.objectName}</p><h1 className="truncate text-xl font-semibold leading-tight text-slate-800">{report.name}</h1></div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Button
             variant={filtersOpen ? "default" : "outline"}
+            size="icon"
             onClick={() => setFiltersOpen((current) => !current)}
+            aria-label="Filters"
           >
-            <Filter className="mr-2 h-4 w-4" />
-            Filters
-            {reportFilters.length > 0 && (
-              <Badge
-                variant={filtersOpen ? "secondary" : "default"}
-                className="ml-1 h-5 min-w-5 justify-center px-1.5"
-              >
-                {reportFilters.length}
-              </Badge>
+            <Filter className="h-4 w-4" />
+            {activeFilters.length > 0 && (
+              <span className="absolute -mt-6 ml-5 rounded-full bg-red-500 px-1.5 text-[10px] text-white">{activeFilters.length}</span>
             )}
           </Button>
-          <Button onClick={runReport} disabled={running}>
-            <Play className="mr-2 h-4 w-4" />
-            {running ? "Running..." : "Run Report"}
+          <Button variant="outline" size="icon" onClick={runReport} disabled={running} aria-label="Refresh report"><RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} /></Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden sm:inline-flex"
+            onClick={() => router.push(reportId === "preview" ? "/reports/new" : `/reports/new?edit=${encodeURIComponent(report.id)}`)}
+          >
+            Edit
           </Button>
         </div>
       </div>
@@ -288,38 +401,23 @@ export default function ReportDetailsPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Report Filters</CardTitle>
               <span className="text-xs text-muted-foreground">
-                {reportFilters.length > 0
-                  ? "Applied when the report runs"
-                  : "No filters applied"}
+                  {activeFilters.length > 0 ? "Edit a filter to refresh the results" : "No filters applied"}
               </span>
             </div>
           </CardHeader>
           <CardContent>
-            {reportFilters.length > 0 ? (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {reportFilters.map((filter, index) => (
-                  <div
-                    key={`${filter.field}-${index}`}
-                    className="rounded-md border bg-muted/20 p-3"
-                  >
-                    <p className="text-xs font-semibold text-muted-foreground">
-                      {filter.field}
-                    </p>
-                    <p className="mt-1 text-sm">
-                      <span className="font-medium">{filter.operator}</span>
-                      <span className="mx-1 text-muted-foreground">·</span>
-                      {filter.value == null || filter.value === ""
-                        ? "Any value"
-                        : String(filter.value)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                This report includes all records.
-              </p>
-            )}
+            <div className="space-y-2">
+              {editableFilters.map((filter, index) => <div key={`${filter.field}-${index}`} className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-[1fr_1fr_1.5fr_auto]">
+                <select value={filter.field} onChange={(event) => setEditableFilters((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, field: event.target.value } : item))} className="h-9 rounded border bg-white px-2 text-sm" aria-label={`Filter ${index + 1} field`}>
+                  {filterFields.map((field) => <option key={field} value={field}>{filterFieldLabel(field)}</option>)}
+                </select>
+                <select value={filter.operator} onChange={(event) => setEditableFilters((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, operator: event.target.value } : item))} className="h-9 rounded border bg-white px-2 text-sm" aria-label={`Filter ${index + 1} operator`}>
+                  {filterOperators.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
+                </select>
+                {filter.operator === "isBlank" || filter.operator === "isNotBlank" ? <div className="flex items-center text-sm text-muted-foreground">No value required</div> : <input value={typeof filter.value === "object" ? "" : String(filter.value ?? "")} onChange={(event) => setEditableFilters((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} className="h-9 rounded border bg-white px-2 text-sm" placeholder="Filter value" aria-label={`Filter ${index + 1} value`} />}
+              </div>)}
+              {editableFilters.length === 0 && <p className="text-sm text-muted-foreground">This report includes all records.</p>}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -340,7 +438,7 @@ export default function ReportDetailsPage() {
           {runError}
         </p>
       )}
-      <Card>
+      <Card className="hidden">
         <CardHeader>
           <CardTitle>Report Configuration</CardTitle>
         </CardHeader>
@@ -400,11 +498,17 @@ export default function ReportDetailsPage() {
         </CardContent>
       </Card>
       {result && (
-        <Card>
+        <>
+        <div className="mx-4 mt-3 border border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-700">
+          <p className="font-medium">⚠ This report has more results than can be shown. Summary information is calculated from the full report results.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Total Records</p>
+          <p className="text-lg font-semibold text-red-700">{result.totalRows.toLocaleString()}</p>
+        </div>
+        <Card className="mx-4 mb-16 mt-2 rounded-none border-x-0 shadow-none">
           <CardHeader>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <CardTitle>
-                Report Results{" "}
+              <CardTitle className="text-base">
+                Report Results {" "}
                 <span className="text-sm font-normal text-muted-foreground">
                   ({filteredResultRows.length}
                   {filteredResultRows.length !== result.totalRows
@@ -413,56 +517,6 @@ export default function ReportDetailsPage() {
                   rows)
                 </span>
               </CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={resultSearch}
-                  onChange={(event) => setResultSearch(event.target.value)}
-                  placeholder="Search results..."
-                  className="h-9 min-w-[220px] rounded-md border bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  aria-label="Search results"
-                />
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <select
-                  value={activeResultDateField}
-                  onChange={(event) => setResultDateField(event.target.value)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  aria-label="Date field"
-                >
-                  <option value="">Filter by date/time</option>
-                  {resultDateFields.map((column) => (
-                    <option key={column} value={column}>
-                      {column}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="datetime-local"
-                  value={resultFrom}
-                  onChange={(event) => setResultFrom(event.target.value)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  aria-label="From date and time"
-                />
-                <input
-                  type="datetime-local"
-                  value={resultTo}
-                  onChange={(event) => setResultTo(event.target.value)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  aria-label="To date and time"
-                />
-                {(resultSearch || resultFrom || resultTo) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setResultSearch("");
-                      setResultFrom("");
-                      setResultTo("");
-                    }}
-                  >
-                    Clear
-                  </Button>
-                )}
-              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -480,16 +534,30 @@ export default function ReportDetailsPage() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b bg-muted/40">
-                      <th className="sticky left-0 bg-muted/40 px-3 py-2">
-                        {report.rowGroups?.join(" / ") || report.groupBy || "Group"}
-                      </th>
-                      {result.pivot.columns.map((column) => (
-                        <th key={column} className="px-3 py-2 text-center">
-                          {column}
+                      {savedColumnGroups.length > 1 ? <>
+                        <th rowSpan={2} className="sticky left-0 bg-muted/40 px-3 py-2">
+                          {savedRowGroups.join(" / ") || "Group"}
                         </th>
-                      ))}
-                      {pivotIsAdditive && <th className="px-3 py-2 text-center">Total</th>}
+                        {pivotColumnHeaders.reduce<{ label: string; span: number }[]>((headers, column) => {
+                          const existing = headers.find((header) => header.label === column.primary);
+                          if (existing) existing.span += 1;
+                          else headers.push({ label: column.primary, span: 1 });
+                          return headers;
+                        }, []).map((header) => <th key={header.label} colSpan={header.span} className="border-l px-3 py-2 text-center">{header.label}</th>)}
+                        {showSubtotals && pivotIsAdditive && <th rowSpan={2} className="px-3 py-2 text-center">Total</th>}
+                      </> : <>
+                        <th className="sticky left-0 bg-muted/40 px-3 py-2">
+                          {savedRowGroups.join(" / ") || "Group"}
+                        </th>
+                        {result.pivot.columns.map((column) => (
+                          <th key={column} className="px-3 py-2 text-center">
+                            {column}
+                          </th>
+                        ))}
+                        {showSubtotals && pivotIsAdditive && <th className="px-3 py-2 text-center">Total</th>}
+                      </>}
                     </tr>
+                    {savedColumnGroups.length > 1 && <tr className="border-b bg-muted/20">{pivotColumnHeaders.map((column) => <th key={column.label} className="border-l px-3 py-1.5 text-center text-xs font-normal text-muted-foreground">{column.secondary}</th>)}</tr>}
                   </thead>
                   <tbody>
                     {filteredPivotRows.map((row) => {
@@ -500,14 +568,14 @@ export default function ReportDetailsPage() {
                       return (
                         <tr key={row.group} className="border-b hover:bg-muted/30">
                           <td className="sticky left-0 bg-background px-3 py-2 font-medium text-primary">
-                            {Object.values(row.groupValues || {}).join(" / ") || row.group}
+                            {Object.values(row.groupValues || {}).join(" / ") || row.group}{showRowCounts && <span className="ml-1 font-normal text-muted-foreground">({total})</span>}
                           </td>
                           {result.pivot!.columns.map((column) => (
                             <td key={column} className="px-3 py-2 text-center">
                               {row.values[column] || 0}
                             </td>
                           ))}
-                          {pivotIsAdditive && <td className="px-3 py-2 text-center font-semibold">{total}</td>}
+                          {showSubtotals && pivotIsAdditive && <td className="px-3 py-2 text-center font-semibold">{total}</td>}
                         </tr>
                       );
                     })}
@@ -518,7 +586,7 @@ export default function ReportDetailsPage() {
                         </td>
                       </tr>
                     )}
-                    {pivotIsAdditive && filteredPivotRows.length > 0 && (
+                    {showGrandTotal && filteredPivotRows.length > 0 && (
                       <tr className="border-t bg-muted/40 font-semibold">
                         <td className="sticky left-0 bg-muted/40 px-3 py-2">Total</td>
                         {result.pivot.columns.map((column) => (
@@ -526,55 +594,87 @@ export default function ReportDetailsPage() {
                             {filteredPivotRows.reduce((sum, row) => sum + Number(row.values[column] || 0), 0)}
                           </td>
                         ))}
-                        <td className="px-3 py-2 text-center">
+                        {showSubtotals && pivotIsAdditive && <td className="px-3 py-2 text-center">
                           {filteredPivotRows.reduce((sum, row) => sum + Object.values(row.values).reduce((rowSum, value) => rowSum + Number(value || 0), 0), 0)}
-                        </td>
+                        </td>}
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-            ) : result.groups && (report.groupBy || report.rowGroups?.length) ? (
+            ) : result.groups && savedRowGroups.length ? (
               <div className="overflow-x-auto">
+                <div className="mb-3 flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-semibold">Summary</p>
+                    <p className="text-xs text-muted-foreground">Grouped by {savedRowGroups.join(" · ")}</p>
+                  </div>
+                  <Badge variant="secondary">{result.totalRows} records</Badge>
+                </div>
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b">
-                      {result.columns.map((column) => (
+                      {savedRowGroups.map((groupField) => (
+                        <th key={groupField} className="border-r px-3 py-2 font-semibold text-primary">
+                          {groupField}
+                        </th>
+                      ))}
+                      {showDetailRows && result.columns.map((column) => (
                         <th key={column} className="px-3 py-2">
                           {column}
                         </th>
                       ))}
+                      {!showDetailRows && showRowCounts && <th className="border-r px-3 py-2 text-center font-semibold">Record Count</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredGroups.length === 0 ? (
                       <tr>
-                        <td colSpan={result.columns.length} className="py-8 text-center text-sm text-muted-foreground">
+                        <td colSpan={savedRowGroups.length + (showDetailRows ? result.columns.length : showRowCounts ? 1 : 0)} className="py-8 text-center text-sm text-muted-foreground">
                           No grouped records match your search or date range.
                         </td>
                       </tr>
-                    ) : filteredGroups.flatMap((group) => [
-                      <tr key={`group-${group.group}`} className="bg-muted/50">
-                        <td
-                          colSpan={result.columns.length}
-                          className="px-3 py-2 font-semibold"
-                        >
-                          {Object.values(group.groupValues || {}).join(" / ") || group.group} ({group.count})
-                        </td>
+                    ) : filteredGroups.flatMap((group, groupIndex) => {
+                      const groupKey = `${group.group}-${groupIndex}`;
+                      const collapsed = Boolean(collapsedGroups[groupKey]);
+                      if (!showDetailRows) {
+                        return [
+                          <tr key={`group-${groupKey}-summary`} className="border-b hover:bg-slate-50">
+                            {savedRowGroups.map((groupField) => <td key={groupField} className="border-r px-3 py-2 text-primary">{group.groupValues?.[groupField] || "(Blank)"}</td>)}
+                            {showRowCounts && <td className="border-r px-3 py-2 text-center">{group.count}</td>}
+                          </tr>,
+                          ...(showSubtotals ? [<tr key={`${groupKey}-subtotal`} className="border-b bg-slate-50 font-semibold"><td colSpan={savedRowGroups.length + (showRowCounts ? 1 : 0)} className="px-3 py-2 text-right">Subtotal: {group.count}</td></tr>] : []),
+                        ];
+                      }
+                      return [
+                      <tr key={`group-${groupKey}`} className="cursor-pointer border-b bg-primary/5 hover:bg-primary/10">
+                        {savedRowGroups.map((groupField, groupIndex) => <td key={groupField} className="border-r px-3 py-2 font-semibold text-primary">
+                          {groupIndex === 0 && <button type="button" onClick={() => setCollapsedGroups((current) => ({ ...current, [groupKey]: !collapsed }))} className="mr-2 text-xs" aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.group}`}>{collapsed ? "▶" : "▼"}</button>}
+                          {group.groupValues?.[groupField] || (groupIndex === 0 ? group.group : "")}{groupIndex === savedRowGroups.length - 1 && showRowCounts && <span className="font-normal text-muted-foreground"> ({group.count})</span>}
+                        </td>)}
+                        {result.columns.map((column) => <td key={column} className="border-r px-3 py-2" />)}
                       </tr>,
-                      ...(group.rows || []).map((row, index) => (
+                      ...(!collapsed && showDetailRows ? (group.rows || []).map((row, index) => (
                         <tr
-                          key={`${group.group}-${index}`}
+                          key={`${groupKey}-${index}`}
                           className="border-b"
                         >
+                          {savedRowGroups.map((groupField) => <td key={groupField} className="border-r px-3 py-2" />)}
                           {result.columns.map((column) => (
                             <td key={column} className="px-3 py-2">
                               {row[column] == null ? "-" : String(row[column])}
                             </td>
                           ))}
                         </tr>
-                      )),
-                    ])}
+                      )) : []),
+                      ...(!collapsed && showSubtotals ? [<tr key={`${groupKey}-subtotal`} className="border-b bg-slate-50 font-semibold"><td colSpan={savedRowGroups.length + result.columns.length} className="px-3 py-2 text-right">Subtotal: {group.count}</td></tr>] : []),
+                    ];
+                    })}
+                    {showGrandTotal && filteredGroups.length > 0 && result.summary && (
+                      <tr className="border-t bg-muted/40 font-semibold">
+                        <td colSpan={savedRowGroups.length + (showDetailRows ? result.columns.length : showRowCounts ? 1 : 0)} className="px-3 py-2">Grand Total: {result.totalRows} records {Object.entries(result.summary).map(([label, value]) => <span key={label} className="ml-4 font-normal">{label}: {value}</span>)}</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -604,12 +704,24 @@ export default function ReportDetailsPage() {
                         ))}
                       </tr>
                     ))}
+                    {hasGrouping && showGrandTotal && filteredResultRows.length > 0 && (
+                      <tr className="border-t bg-muted/40 font-semibold">
+                        <td colSpan={result.columns.length} className="px-3 py-2">Grand Total: {result.totalRows} records</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             )}
           </CardContent>
         </Card>
+        <div className="sticky bottom-0 z-20 mt-auto flex w-full flex-wrap items-center gap-5 border-t bg-white px-6 py-2 text-xs text-slate-600 shadow-[0_-2px_8px_rgba(15,23,42,0.12)]">
+          {hasGrouping && <label className="flex items-center gap-2">Row Counts<input type="checkbox" checked={showRowCounts} onChange={(event) => setShowRowCounts(event.target.checked)} className="h-4 w-4 accent-red-600" /></label>}
+          {hasGrouping && <label className="flex items-center gap-2">Detail Rows<input type="checkbox" checked={showDetailRows} onChange={(event) => setShowDetailRows(event.target.checked)} className="h-4 w-4 accent-red-600" /></label>}
+          {hasGrouping && <label className="flex items-center gap-2">Subtotals<input type="checkbox" checked={showSubtotals} onChange={(event) => setShowSubtotals(event.target.checked)} className="h-4 w-4 accent-slate-500" /></label>}
+          {hasGrouping && <label className="flex items-center gap-2">Grand Total<input type="checkbox" checked={showGrandTotal} onChange={(event) => setShowGrandTotal(event.target.checked)} className="h-4 w-4 accent-red-600" /></label>}
+        </div>
+        </>
       )}
     </div>
   );

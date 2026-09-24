@@ -72,24 +72,6 @@ const PERMISSIONS = [
   { name: 'REPORT_VIEW', label: 'View Reports', module: 'REPORT', action: 'VIEW' },
   { name: 'REPORT_EXPORT', label: 'Export Reports', module: 'REPORT', action: 'EXPORT' },
 
-  // CONTACT
-  { name: 'CONTACT_READ', label: 'View Contact', module: 'CONTACT', action: 'READ' },
-  { name: 'CONTACT_CREATE', label: 'Create Contact', module: 'CONTACT', action: 'CREATE' },
-  { name: 'CONTACT_UPDATE', label: 'Update Contact', module: 'CONTACT', action: 'UPDATE' },
-  { name: 'CONTACT_DELETE', label: 'Delete Contact', module: 'CONTACT', action: 'DELETE' },
-
-  // ACCOUNT
-  { name: 'ACCOUNT_READ', label: 'View Account', module: 'ACCOUNT', action: 'READ' },
-  { name: 'ACCOUNT_CREATE', label: 'Create Account', module: 'ACCOUNT', action: 'CREATE' },
-  { name: 'ACCOUNT_UPDATE', label: 'Update Account', module: 'ACCOUNT', action: 'UPDATE' },
-  { name: 'ACCOUNT_DELETE', label: 'Delete Account', module: 'ACCOUNT', action: 'DELETE' },
-
-  // CUSTOMER
-  { name: 'CUSTOMER_READ', label: 'View Customer', module: 'CUSTOMER', action: 'READ' },
-  { name: 'CUSTOMER_CREATE', label: 'Create Customer', module: 'CUSTOMER', action: 'CREATE' },
-  { name: 'CUSTOMER_UPDATE', label: 'Update Customer', module: 'CUSTOMER', action: 'UPDATE' },
-  { name: 'CUSTOMER_DELETE', label: 'Delete Customer', module: 'CUSTOMER', action: 'DELETE' },
-
   // PROJECT
   { name: 'PROJECT_READ', label: 'View Project', module: 'PROJECT', action: 'READ' },
   { name: 'PROJECT_CREATE', label: 'Create Project', module: 'PROJECT', action: 'CREATE' },

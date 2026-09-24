@@ -1,13 +1,20 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   KPICard,
   PipelineSummary,
 } from "@/components/crm/dashboard-widgets";
+
 import {
   Users,
   TrendingUp,
@@ -17,7 +24,9 @@ import {
   Plus,
   ArrowRight,
 } from "lucide-react";
+
 import Link from "next/link";
+
 import { analyticsApi, opportunityApi, taskApi, activityApi } from "@/lib/api";
 
 function formatAmount(amount: number) {
@@ -305,7 +314,7 @@ export default function DashboardPage() {
                       </Link>
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No due date"}
+                      {task.dueDate ? formatDate(task.dueDate) : "No due date"}
                     </span>
                   </div>
                 ))}

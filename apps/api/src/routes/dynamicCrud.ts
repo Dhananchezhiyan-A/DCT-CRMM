@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import { prisma } from '@dct-crm/db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import {
   listRecords,

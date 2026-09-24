@@ -1,4 +1,3 @@
-import { Request } from 'express';
 import { EffectivePermission } from './services/effectivePermissions';
 
 declare global {

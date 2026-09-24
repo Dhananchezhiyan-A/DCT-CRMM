@@ -1,13 +1,23 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useRouter, useParams } from "next/navigation";
+
 import { useAuth } from "@/contexts/auth-context";
+
 import { companyApi } from "@/lib/api";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Badge } from "@/components/ui/badge";
+
 import { useToast } from "@/hooks/use-toast";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
 import {
   ArrowLeft,
   Edit,
@@ -421,8 +432,8 @@ export default function CompanyDetailsPage() {
             <InfoItem icon={Clock} label="Timezone" value={company.timezone} />
             <InfoItem icon={DollarSign} label="Currency" value={company.currency} />
             <InfoItem icon={MapPin} label="Country" value={company.country} />
-            <InfoItem icon={Calendar} label="Start Date" value={company.companyStartDate ? new Date(company.companyStartDate).toLocaleDateString() : undefined} />
-            <InfoItem icon={Calendar} label="Expiry Date" value={company.companyExpiryDate ? new Date(company.companyExpiryDate).toLocaleDateString() : undefined} />
+            <InfoItem icon={Calendar} label="Start Date" value={company.companyStartDate ? formatDate(company.companyStartDate) : undefined} />
+            <InfoItem icon={Calendar} label="Expiry Date" value={company.companyExpiryDate ? formatDate(company.companyExpiryDate) : undefined} />
             <InfoItem icon={Shield} label="Admin Users" value={company.adminUserCount !== undefined ? String(company.adminUserCount) : undefined} />
             {company.address && (
               <div className="md:col-span-2 space-y-1">
@@ -654,8 +665,8 @@ export default function CompanyDetailsPage() {
                       {capacity.package.status}
                     </Badge>
                   </div>
-                  <InfoItem icon={Calendar} label="Start Date" value={capacity.package.startDate ? new Date(capacity.package.startDate).toLocaleDateString() : undefined} />
-                  <InfoItem icon={Calendar} label="Expiry Date" value={capacity.package.expiryDate ? new Date(capacity.package.expiryDate).toLocaleDateString() : undefined} />
+                  <InfoItem icon={Calendar} label="Start Date" value={capacity.package.startDate ? formatDate(capacity.package.startDate) : undefined} />
+                  <InfoItem icon={Calendar} label="Expiry Date" value={capacity.package.expiryDate ? formatDate(capacity.package.expiryDate) : undefined} />
                   {capacity.package.notes && (
                     <div className="md:col-span-2 space-y-1">
                       <p className="text-sm font-medium text-muted-foreground">Notes</p>
@@ -692,11 +703,11 @@ export default function CompanyDetailsPage() {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Created</p>
-            <p className="text-sm">{new Date(company.createdAt).toLocaleString()}</p>
+            <p className="text-sm">{formatDateTime(company.createdAt)}</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Last Modified</p>
-            <p className="text-sm">{new Date(company.updatedAt).toLocaleString()}</p>
+            <p className="text-sm">{formatDateTime(company.updatedAt)}</p>
           </div>
         </CardContent>
       </Card>

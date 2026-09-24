@@ -1,16 +1,29 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { bookingApi } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   ArrowLeft,
   Calendar,
@@ -27,7 +40,7 @@ import {
 interface BookingData {
   id: string;
   bookingNumber: string;
-  customerName: string;
+  leadName: string;
   projectName: string;
   unitNumber: string;
   amount: number;
@@ -160,7 +173,7 @@ export default function BookingDetailPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{booking.bookingNumber}</h1>
-            <p className="text-muted-foreground">Booking for {booking.customerName}</p>
+            <p className="text-muted-foreground">Booking for {booking.leadName}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -273,8 +286,8 @@ export default function BookingDetailPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Customer</span>
-                  <span className="text-sm font-medium">{booking.customerName}</span>
+                  <span className="text-sm text-muted-foreground">Lead</span>
+                  <span className="text-sm font-medium">{booking.leadName}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Project</span>
@@ -315,7 +328,7 @@ export default function BookingDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Booking Date</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(booking.bookingDate).toLocaleDateString()}
+                      {formatDate(booking.bookingDate)}
                     </p>
                   </div>
                 </div>
@@ -324,7 +337,7 @@ export default function BookingDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(booking.createdAt).toLocaleDateString()}
+                      {formatDate(booking.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -333,7 +346,7 @@ export default function BookingDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Last Updated</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(booking.updatedAt).toLocaleDateString()}
+                      {formatDate(booking.updatedAt)}
                     </p>
                   </div>
                 </div>

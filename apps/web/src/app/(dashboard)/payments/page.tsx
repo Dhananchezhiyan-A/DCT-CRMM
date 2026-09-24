@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/crm/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Download, MoreHorizontal, Eye, Receipt } from "lucide-react";
 import {
   DropdownMenu,
@@ -15,54 +16,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { paymentApi } from "@/lib/api";
 
 interface Payment {
   id: string;
   paymentNumber: string;
-  customerName: string;
+  leadName: string;
   bookingNumber: string;
   amount: number;
-  method: "cash" | "cheque" | "online" | "emi";
+  method: string;
   status: "pending" | "completed" | "failed" | "refunded";
   paymentDate: string;
   reference?: string;
 }
-
-const payments: Payment[] = [
-  {
-    id: "1",
-    paymentNumber: "PAY-2024-001",
-    customerName: "Neha Sharma",
-    bookingNumber: "BK-2024-001",
-    amount: 1500000,
-    method: "online",
-    status: "completed",
-    paymentDate: "2024-01-15T10:00:00Z",
-    reference: "TXN123456789",
-  },
-  {
-    id: "2",
-    paymentNumber: "PAY-2024-002",
-    customerName: "Amit Singh",
-    bookingNumber: "BK-2024-002",
-    amount: 3000000,
-    method: "cheque",
-    status: "pending",
-    paymentDate: "2024-01-14T14:30:00Z",
-    reference: "CHQ987654",
-  },
-  {
-    id: "3",
-    paymentNumber: "PAY-2024-003",
-    customerName: "Vikram Mehta",
-    bookingNumber: "BK-2024-003",
-    amount: 4500000,
-    method: "emi",
-    status: "completed",
-    paymentDate: "2024-01-10T09:00:00Z",
-    reference: "EMI-2024-001",
-  },
-];
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -86,6 +52,15 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
+const formatDate = (value: string) => {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+};
+
 const columns: ColumnDef<Payment>[] = [
   {
     accessorKey: "paymentNumber",
@@ -97,8 +72,8 @@ const columns: ColumnDef<Payment>[] = [
     ),
   },
   {
-    accessorKey: "customerName",
-    header: "Customer",
+    accessorKey: "leadName",
+    header: "Lead",
   },
   {
     accessorKey: "bookingNumber",
@@ -113,7 +88,7 @@ const columns: ColumnDef<Payment>[] = [
     accessorKey: "amount",
     header: "Amount",
     cell: ({ row }) => (
-      <span className="font-medium">{formatCurrency(row.getValue("amount"))}</span>
+      <span className="font-medium">{formatCurrency(row.getValue("amount") as number)}</span>
     ),
   },
   {
@@ -122,7 +97,7 @@ const columns: ColumnDef<Payment>[] = [
     cell: ({ row }) => {
       const method = row.getValue("method") as string;
       return (
-        <Badge className={methodColors[method]}>
+        <Badge className={methodColors[method] || "bg-gray-100 text-gray-800"}>
           {method}
         </Badge>
       );
@@ -143,7 +118,7 @@ const columns: ColumnDef<Payment>[] = [
   {
     accessorKey: "paymentDate",
     header: "Date",
-    cell: ({ row }) => new Date(row.getValue("paymentDate")).toLocaleDateString(),
+    cell: ({ row }) => formatDate(row.getValue("paymentDate") as string),
   },
   {
     accessorKey: "reference",
@@ -187,6 +162,67 @@ export default function PaymentsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [payments, setPayments] = React.useState<Payment[]>([]);
+  const [totalItems, setTotalItems] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchPayments = async () => {
+      try {
+        setIsLoading(true);
+        const res = await paymentApi.list({ page: currentPage, limit: 20 });
+        if (res.data.success && res.data.data) {
+          const mapped = res.data.data.map((item: any) => ({
+            id: item.id,
+            paymentNumber: item.reference || item.id.slice(-8).toUpperCase(),
+            leadName: item.booking?.lead
+              ? `${item.booking.lead.firstName} ${item.booking.lead.lastName}`.trim()
+              : "—",
+            bookingNumber: item.booking?.number || "—",
+            amount: item.amount || 0,
+            method: (item.method || "online").toLowerCase(),
+            status: (item.status || "pending").toLowerCase() as Payment["status"],
+            paymentDate: item.paymentDate || item.createdAt,
+            reference: item.reference,
+          }));
+          setPayments(mapped);
+          setTotalItems(res.data.pagination?.total ?? mapped.length);
+        } else {
+          setPayments([]);
+          setTotalItems(0);
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to load payments", variant: "destructive" as any });
+        setPayments([]);
+        setTotalItems(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchPayments();
+  }, [currentPage, toast]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-24" />
+            <Skeleton className="h-10 w-32" />
+          </div>
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -214,7 +250,7 @@ export default function PaymentsPage() {
         data={payments}
         searchKey="paymentNumber"
         searchPlaceholder="Search by payment number..."
-        totalItems={payments.length}
+        totalItems={totalItems}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
       />

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, ArrowRight, User, Building2, TrendingUp, FileText, Loader2 } from "lucide-react";
+import { Search, ArrowRight, User, TrendingUp, FileText, Loader2 } from "lucide-react";
 import { searchApi } from "@/lib/api";
 
 interface SearchResult {
@@ -63,28 +63,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           });
         });
       }
-      if (data?.contacts) {
-        data.contacts.forEach((item: any) => {
-          flattened.push({
-            id: item.id,
-            title: `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Untitled Contact",
-            subtitle: `Contact${item.phone ? ` - ${item.phone}` : ""}`,
-            type: "contact",
-            href: `/contacts/${item.id}`,
-          });
-        });
-      }
-      if (data?.customers) {
-        data.customers.forEach((item: any) => {
-          flattened.push({
-            id: item.id,
-            title: `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Untitled Customer",
-            subtitle: `Customer${item.phone ? ` - ${item.phone}` : ""}`,
-            type: "customer",
-            href: `/customers/${item.id}`,
-          });
-        });
-      }
       if (data?.opportunities) {
         data.opportunities.forEach((item: any) => {
           flattened.push({
@@ -130,12 +108,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     switch (type) {
       case "lead":
         return <User className="h-4 w-4" />;
-      case "contact":
-        return <User className="h-4 w-4" />;
-      case "account":
-        return <Building2 className="h-4 w-4" />;
-      case "customer":
-        return <Building2 className="h-4 w-4" />;
       case "opportunity":
         return <TrendingUp className="h-4 w-4" />;
       case "task":
@@ -149,12 +121,6 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
     switch (type) {
       case "lead":
         return "bg-blue-100 text-blue-800";
-      case "contact":
-        return "bg-green-100 text-green-800";
-      case "account":
-        return "bg-purple-100 text-purple-800";
-      case "customer":
-        return "bg-orange-100 text-orange-800";
       case "opportunity":
         return "bg-yellow-100 text-yellow-800";
       case "task":
@@ -173,7 +139,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         <div className="relative p-4 pt-0">
           <Search className="absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search leads, contacts, customers, opportunities, tasks..."
+            placeholder="Search leads, opportunities, tasks..."
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10 h-12"

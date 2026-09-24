@@ -1,20 +1,37 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import { useAuth } from "@/contexts/auth-context";
+
 import { leadApi, siteVisitApi, opportunityApi, activityApi, taskApi, followUpApi, objectManagerApi, projectApi } from "@/lib/api";
+
 import LayoutDrivenForm from "@/components/admin/layout-driven-form";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { Textarea } from "@/components/ui/textarea";
+
 import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
+
 import {
   Select,
   SelectContent,
@@ -22,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import {
   Dialog,
   DialogContent,
@@ -30,6 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
 import {
   User,
   Phone,
@@ -47,6 +66,9 @@ import {
   ArrowRight,
   CheckCircle2,
   StickyNote,
+  Edit3,
+  Save,
+  X,
 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -126,6 +148,11 @@ interface LeadData {
   followUps?: any[];
   auditLogs?: any[];
   ownerHistory?: any[];
+  lastModified?: {
+    by?: { id: string; firstName: string; lastName: string; email?: string | null } | null;
+    at?: string;
+    action?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -133,7 +160,7 @@ interface LeadData {
 export default function LeadDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, user, isLoading: authLoading } = useAuth();
+  const { profile, user, isLoading: authLoading, hasPermission, hasEffectivePermission } = useAuth();
   const { toast } = useToast();
   const leadId = params.id as string;
 
@@ -175,6 +202,17 @@ export default function LeadDetailPage() {
   const [pushSvcDialogOpen, setPushSvcDialogOpen] = React.useState(false);
   const [pushSvcReason, setPushSvcReason] = React.useState("");
 
+  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
+  const [auditPage, setAuditPage] = React.useState(1);
+  const [auditTotalPages, setAuditTotalPages] = React.useState(1);
+  const [auditTotal, setAuditTotal] = React.useState(0);
+  const [auditLoading, setAuditLoading] = React.useState(false);
+
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editData, setEditData] = React.useState<Record<string, any>>({});
+  const [editFieldErrors, setEditFieldErrors] = React.useState<Record<string, string>>({});
+  const [editReason, setEditReason] = React.useState("");
+
   const fetchLead = React.useCallback(async () => {
     try {
       setIsLoading(true);
@@ -195,9 +233,40 @@ export default function LeadDetailPage() {
     }
   }, [leadId, toast]);
 
+  const fetchAuditHistory = React.useCallback(
+    async (page = 1) => {
+      setAuditLoading(true);
+      try {
+        const res = await leadApi.getAuditHistory(leadId, { page, limit: 20 });
+        if (res.data.success) {
+          setAuditLogs(res.data.data || []);
+          const p = res.data.pagination;
+          setAuditPage(p?.page || page);
+          setAuditTotalPages(p?.totalPages || 1);
+          setAuditTotal(p?.total || 0);
+        }
+      } catch {
+        toast({
+          title: "Error",
+          description: "Failed to load audit history",
+          variant: "destructive" as any,
+        });
+      } finally {
+        setAuditLoading(false);
+      }
+    },
+    [leadId, toast],
+  );
+
   React.useEffect(() => {
     fetchLead();
   }, [fetchLead]);
+
+  React.useEffect(() => {
+    if (activeTab === "audit-history" && auditLogs.length === 0 && !auditLoading) {
+      fetchAuditHistory(1);
+    }
+  }, [activeTab, auditLogs.length, auditLoading, fetchAuditHistory]);
 
   React.useEffect(() => {
     if (siteVisitDialogOpen) {
@@ -215,14 +284,89 @@ export default function LeadDetailPage() {
   const isCRM = profileName.includes("crm");
   const isFinance = profileName.includes("finance");
   const isRecovery = profileName.includes("recovery");
+  const canEditLead =
+    hasPermission("Lead", "edit") ||
+    hasEffectivePermission("LEAD_UPDATE") ||
+    hasEffectivePermission("FULL_SYSTEM_ACCESS") ||
+    isAdminOrManager;
 
   const status = lead?.status || "";
+
+  const startEdit = () => {
+    if (!lead) return;
+    const { leadNumber: _ln, owner: _o, creator: _c, project: _p, ...rest } = lead;
+    setEditData(rest);
+    setEditFieldErrors({});
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditData({});
+    setEditFieldErrors({});
+    setEditReason("");
+  };
+
+  const saveEdit = async () => {
+    if (!lead) return;
+    setEditFieldErrors({});
+    if (!editData.lastName?.trim()) {
+      toast({ title: "Validation", description: "Last name is required", variant: "destructive" as any });
+      return;
+    }
+    if (!editData.company?.trim()) {
+      toast({ title: "Validation", description: "Company is required", variant: "destructive" as any });
+      return;
+    }
+    if (!String(editData.phone ?? "").trim()) {
+      setEditFieldErrors({ phone: "Phone number is required." });
+      toast({ title: "Validation", description: "Phone number is required.", variant: "destructive" as any });
+      return;
+    }
+    setIsActionLoading(true);
+    try {
+      const payload: Record<string, any> = {};
+      for (const [key, value] of Object.entries(editData)) {
+        if (value !== null && value !== undefined && value !== "") {
+          payload[key] = value;
+        }
+      }
+      delete payload.leadNumber;
+      delete payload.id;
+      delete payload.leadStatus;
+      delete payload.leadSource;
+      if (payload.status === lead.status) delete payload.status;
+      if (editReason.trim()) payload.reason = editReason.trim();
+      await leadApi.update(leadId, payload);
+      toast({ title: "Success", description: "Lead updated successfully" });
+      setIsEditing(false);
+      setEditData({});
+      setEditFieldErrors({});
+      setEditReason("");
+      await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to update lead";
+      if (message === "Phone number already exists for another lead.") {
+        setEditFieldErrors({ phone: message });
+      }
+      toast({ title: "Error", description: message, variant: "destructive" as any });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
   const handleAction = async (action: () => Promise<void>, label: string) => {
     setIsActionLoading(true);
     try {
       await action();
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch {
       toast({ title: "Error", description: `${label} failed`, variant: "destructive" as any });
     } finally {
@@ -243,6 +387,9 @@ export default function LeadDetailPage() {
       setStatusNote("");
       setPendingStatus("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Status update failed", variant: "destructive" as any });
     } finally {
@@ -268,6 +415,9 @@ export default function LeadDetailPage() {
       setPushSvcDialogOpen(false);
       setPushSvcReason("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Push to SVC failed", variant: "destructive" as any });
     } finally {
@@ -288,6 +438,9 @@ export default function LeadDetailPage() {
       setRecoveryReason("");
       setRecoveryNote("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Failed to move to recovery", variant: "destructive" as any });
     } finally {
@@ -315,6 +468,9 @@ export default function LeadDetailPage() {
       setSvTime("");
       setSvProjectId("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Failed to schedule site visit", variant: "destructive" as any });
     } finally {
@@ -337,6 +493,9 @@ export default function LeadDetailPage() {
       setFollowUpDate("");
       setFollowUpTime("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Failed to create follow-up", variant: "destructive" as any });
     } finally {
@@ -359,6 +518,9 @@ export default function LeadDetailPage() {
       setTaskDueDate("");
       setTaskTime("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Failed to create task", variant: "destructive" as any });
     } finally {
@@ -379,6 +541,9 @@ export default function LeadDetailPage() {
       setNoteContent("");
       setNoteSubject("");
       await fetchLead();
+      if (activeTab === "audit-history") {
+        fetchAuditHistory(1);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err?.response?.data?.error || "Failed to add note", variant: "destructive" as any });
     } finally {
@@ -419,6 +584,52 @@ export default function LeadDetailPage() {
   };
 
   const workflowActions = getWorkflowActions();
+
+  const formatAuditValue = (value: any): string => {
+    if (value === null || value === undefined || value === "") return "—";
+    if (value instanceof Date) return formatDateTime(value);
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  };
+
+  const getAuditChanges = (entry: any): { field: string; oldValue: any; newValue: any }[] => {
+    const oldVals = entry.oldValues || {};
+    const newVals = entry.newValues || {};
+    const fields = new Set([...Object.keys(oldVals), ...Object.keys(newVals)]);
+    const changes: { field: string; oldValue: any; newValue: any }[] = [];
+
+    if (entry.action === "CREATE" || entry.action === "FOLLOW_UP_CREATED" || entry.action === "TASK_CREATED" || entry.action === "NOTE_CREATED") {
+      for (const field of Object.keys(newVals)) {
+        if (field === "reason" || field === "note") continue;
+        changes.push({ field, oldValue: null, newValue: newVals[field] });
+      }
+      return changes;
+    }
+
+    for (const field of fields) {
+      if (field === "reason" || field === "note") continue;
+      const oldV = oldVals[field];
+      const newV = newVals[field];
+      if (JSON.stringify(oldV ?? null) !== JSON.stringify(newV ?? null)) {
+        changes.push({ field, oldValue: oldV, newValue: newV });
+      }
+    }
+    return changes;
+  };
+
+  const getAuditReason = (entry: any): string | null => {
+    const newVals = entry.newValues || {};
+    return newVals.reason || newVals.note || newVals.recoveryReason || null;
+  };
+
+  const lastModifiedBy = lead?.lastModified?.by;
+  const lastModifiedAt = lead?.lastModified?.at || lead?.updatedAt;
 
   if (isLoading || authLoading) {
     return (
@@ -522,7 +733,44 @@ export default function LeadDetailPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {workflowActions.map((action) => (
+          {canEditLead && !isEditing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={startEdit}
+              disabled={isActionLoading}
+            >
+              <Edit3 className="h-4 w-4 mr-1" />Edit
+            </Button>
+          )}
+          {isEditing && (
+            <>
+              <Button
+                size="sm"
+                onClick={saveEdit}
+                disabled={isActionLoading}
+              >
+                {isActionLoading ? (
+                  <>
+                    <Clock className="h-4 w-4 mr-1 animate-spin" />Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-1" />Save
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={cancelEdit}
+                disabled={isActionLoading}
+              >
+                <X className="h-4 w-4 mr-1" />Cancel
+              </Button>
+            </>
+          )}
+          {!isEditing && workflowActions.map((action) => (
             <Button
               key={action.label}
               variant={action.variant || "default"}
@@ -581,17 +829,49 @@ export default function LeadDetailPage() {
           <TabsTrigger value="opportunities" className="gap-2">
             <TrendingUp className="h-4 w-4" />Opportunities
           </TabsTrigger>
+          <TabsTrigger value="audit-history" className="gap-2">
+            <FileText className="h-4 w-4" />Audit History
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
+          {isEditing && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Edit Reason (optional)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="Why are you updating this lead? This will be recorded in audit history..."
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                />
+              </CardContent>
+            </Card>
+          )}
           {lead && layout && (
             <LayoutDrivenForm
               objectName="Lead"
-              mode="detail"
-              data={lead}
+              mode={isEditing ? "edit" : "detail"}
+              data={isEditing ? editData : lead}
+              onChange={
+                isEditing
+                  ? (field, value) => {
+                      setEditData((prev) => ({ ...prev, [field]: value }));
+                      if (field === "phone") {
+                        setEditFieldErrors((prev) => {
+                          if (!prev.phone) return prev;
+                          const { phone: _phone, ...rest } = prev;
+                          return rest;
+                        });
+                      }
+                    }
+                  : undefined
+              }
               layout={layout}
               fields={fields}
+              fieldErrors={isEditing ? editFieldErrors : undefined}
             />
           )}
 
@@ -604,14 +884,14 @@ export default function LeadDetailPage() {
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Created</p>
-                    <p className="text-xs text-muted-foreground">{new Date(lead!.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(lead!.createdAt)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Last Updated</p>
-                    <p className="text-xs text-muted-foreground">{new Date(lead!.updatedAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(lead!.updatedAt)}</p>
                   </div>
                 </div>
                 {lead!.creator && (
@@ -623,6 +903,19 @@ export default function LeadDetailPage() {
                     </div>
                   </div>
                 )}
+                <div className="flex items-center gap-3">
+                  <Edit3 className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Last Modified</p>
+                    <p className="text-xs text-muted-foreground">{lastModifiedAt ? formatDateTime(lastModifiedAt) : "—"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      by{" "}
+                      {lastModifiedBy
+                        ? `${lastModifiedBy.firstName} ${lastModifiedBy.lastName}`
+                        : "Unknown"}
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
         </TabsContent>
@@ -667,8 +960,8 @@ export default function LeadDetailPage() {
                           <p className="text-xs text-muted-foreground mt-1">{entry.handoffReason}</p>
                         )}
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                          <span>{new Date(entry.startDate).toLocaleString()}</span>
-                          {entry.endDate && <span>→ {new Date(entry.endDate).toLocaleString()}</span>}
+                          <span>{formatDateTime(entry.startDate)}</span>
+                          {entry.endDate && <span>→ {formatDateTime(entry.endDate)}</span>}
                           {!entry.endDate && <span>→ Current</span>}
                         </div>
                       </div>
@@ -696,7 +989,7 @@ export default function LeadDetailPage() {
                       <History className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
                         <p className="text-sm">{activity.description || activity.type}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(activity.createdAt)}</p>
                       </div>
                     </div>
                   ))}
@@ -722,7 +1015,7 @@ export default function LeadDetailPage() {
                       <CheckSquare className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
                         <p className="text-sm">{task.title || task.name}</p>
-                        <p className="text-xs text-muted-foreground">{task.status} {task.dueDate ? `- Due ${new Date(task.dueDate).toLocaleDateString()}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{task.status} {task.dueDate ? `- Due ${formatDate(task.dueDate)}` : ""}</p>
                       </div>
                     </div>
                   ))}
@@ -748,7 +1041,7 @@ export default function LeadDetailPage() {
                       <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
                         <p className="text-sm">{fu.title || fu.description || fu.type}</p>
-                        <p className="text-xs text-muted-foreground">{fu.dueDate ? new Date(fu.dueDate).toLocaleString() : fu.status}</p>
+                        <p className="text-xs text-muted-foreground">{fu.dueDate ? formatDateTime(fu.dueDate) : fu.status}</p>
                       </div>
                     </div>
                   ))}
@@ -774,7 +1067,7 @@ export default function LeadDetailPage() {
                       <Map className="h-4 w-4 text-muted-foreground shrink-0" />
                       <div>
                         <p className="text-sm">{sv.status || "Scheduled"} {sv.project?.name ? `- ${sv.project.name}` : ""}</p>
-                        <p className="text-xs text-muted-foreground">{sv.scheduledAt ? new Date(sv.scheduledAt).toLocaleString() : sv.createdAt ? new Date(sv.createdAt).toLocaleString() : ""}</p>
+                        <p className="text-xs text-muted-foreground">{sv.scheduledAt ? formatDateTime(sv.scheduledAt) : sv.createdAt ? formatDateTime(sv.createdAt) : ""}</p>
                         {sv.assignee && <p className="text-xs text-muted-foreground">Assigned: {sv.assignee.firstName} {sv.assignee.lastName}</p>}
                       </div>
                     </div>
@@ -811,6 +1104,97 @@ export default function LeadDetailPage() {
                   <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No opportunities created</p>
                 </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Audit History Tab */}
+        <TabsContent value="audit-history">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">Audit History</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {auditTotal} record{auditTotal === 1 ? "" : "s"} · newest first
+              </p>
+            </CardHeader>
+            <CardContent>
+              {auditLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : auditLogs.length > 0 ? (
+                <div className="space-y-3">
+                  {auditLogs.map((entry: any) => {
+                    const changes = getAuditChanges(entry);
+                    const reason = getAuditReason(entry);
+                    const userName = entry.user
+                      ? `${entry.user.firstName} ${entry.user.lastName}`
+                      : "System";
+                    return (
+                      <div key={entry.id} className="p-3 rounded-md bg-muted/50 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{entry.action}</Badge>
+                            <span className="text-sm font-medium">{userName}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTime(entry.createdAt)}
+                          </span>
+                        </div>
+                        {changes.length > 0 && (
+                          <div className="space-y-1">
+                            {changes.map((change, idx) => (
+                              <div key={idx} className="text-xs flex flex-wrap items-center gap-1">
+                                <span className="font-medium">{change.field}:</span>
+                                <span className="text-muted-foreground">
+                                  {formatAuditValue(change.oldValue)}
+                                </span>
+                                <span aria-hidden="true">→</span>
+                                <span>{formatAuditValue(change.newValue)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {reason && (
+                          <p className="text-xs text-muted-foreground">
+                            Reason: {reason}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {auditTotalPages > 1 && (
+                    <div className="flex items-center justify-between pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchAuditHistory(Math.max(1, auditPage - 1))}
+                        disabled={auditPage <= 1 || auditLoading}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {auditPage} of {auditTotalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchAuditHistory(Math.min(auditTotalPages, auditPage + 1))}
+                        disabled={auditPage >= auditTotalPages || auditLoading}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No audit history recorded</p>
+                </div>
               )}
             </CardContent>
           </Card>

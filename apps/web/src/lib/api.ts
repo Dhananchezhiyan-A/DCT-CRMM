@@ -74,48 +74,8 @@ export const leadApi = {
     api.post<ApiResponse>(`/api/leads/${id}/schedule-site-visit`, data),
   getOwnerHistory: (id: string) =>
     api.get<ApiResponse>(`/api/leads/${id}/owner-history`),
-};
-
-// Contact API
-export const contactApi = {
-  list: (params?: Record<string, any>) =>
-    api.get<ApiResponse>('/api/contacts', { params }),
-  get: (id: string) =>
-    api.get<ApiResponse>(`/api/contacts/${id}`),
-  create: (data: any) =>
-    api.post<ApiResponse>('/api/contacts', data),
-  update: (id: string, data: any) =>
-    api.put<ApiResponse>(`/api/contacts/${id}`, data),
-  delete: (id: string) =>
-    api.delete<ApiResponse>(`/api/contacts/${id}`),
-};
-
-// Account API
-export const accountApi = {
-  list: (params?: Record<string, any>) =>
-    api.get<ApiResponse>('/api/accounts', { params }),
-  get: (id: string) =>
-    api.get<ApiResponse>(`/api/accounts/${id}`),
-  create: (data: any) =>
-    api.post<ApiResponse>('/api/accounts', data),
-  update: (id: string, data: any) =>
-    api.put<ApiResponse>(`/api/accounts/${id}`, data),
-  delete: (id: string) =>
-    api.delete<ApiResponse>(`/api/accounts/${id}`),
-};
-
-// Customer API
-export const customerApi = {
-  list: (params?: Record<string, any>) =>
-    api.get<ApiResponse>('/api/customers', { params }),
-  get: (id: string) =>
-    api.get<ApiResponse>(`/api/customers/${id}`),
-  create: (data: any) =>
-    api.post<ApiResponse>('/api/customers', data),
-  update: (id: string, data: any) =>
-    api.put<ApiResponse>(`/api/customers/${id}`, data),
-  delete: (id: string) =>
-    api.delete<ApiResponse>(`/api/customers/${id}`),
+  getAuditHistory: (id: string, params?: Record<string, any>) =>
+    api.get<ApiResponse>(`/api/leads/${id}/audit-history`, { params }),
 };
 
 // Site Visit API
@@ -286,6 +246,34 @@ export const activityApi = {
     api.delete<ApiResponse>(`/api/activities/${id}`),
 };
 
+// Object Definition API
+export const objectDefinitionApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<ApiResponse>('/api/objects', { params }),
+  get: (name: string) =>
+    api.get<ApiResponse>(`/api/objects/${name}`),
+  create: (data: any) =>
+    api.post<ApiResponse>('/api/objects', data),
+  update: (name: string, data: any) =>
+    api.put<ApiResponse>(`/api/objects/${name}`, data),
+  delete: (name: string) =>
+    api.delete<ApiResponse>(`/api/objects/${name}`),
+  fields: (objectName: string, params?: { includeSystem?: boolean; includeInactive?: boolean }) =>
+    api.get<ApiResponse>(`/api/fields/${objectName}`, { params }),
+};
+
+// Data Administration API
+export const dataAdministrationApi = {
+  import: (objectName: string, fields: string[], csv: string) =>
+    api.post<ApiResponse>('/api/data-administration/import', { objectName, fields, csv }),
+  export: (objectName: string, params?: Record<string, any>) =>
+    api.get(`/api/data-administration/export/${objectName}`, {
+      params,
+      responseType: 'text',
+      headers: { Accept: 'text/csv' },
+    }),
+};
+
 // Report API
 export const reportApi = {
   list: (params?: Record<string, any>) =>
@@ -433,8 +421,8 @@ export const auditApi = {
     api.get<ApiResponse>('/api/audit', { params }),
   get: (id: string) =>
     api.get<ApiResponse>(`/api/audit/${id}`),
-  getByObject: (type: string, objectId: string) =>
-    api.get<ApiResponse>(`/api/audit/object/${type}/${objectId}`),
+  getByObject: (type: string, objectId: string, params?: Record<string, any>) =>
+    api.get<ApiResponse>(`/api/audit/object/${type}/${objectId}`, { params }),
   getByUser: (userId: string) =>
     api.get<ApiResponse>(`/api/audit/user/${userId}`),
   getSummary: (params?: Record<string, any>) =>

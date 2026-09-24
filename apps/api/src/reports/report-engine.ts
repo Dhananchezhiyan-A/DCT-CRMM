@@ -3,6 +3,7 @@ import { REPORT_OBJECTS, ReportField } from "./report-metadata";
 
 export type AggregateFunction =
   | "count"
+  | "uniqueCount"
   | "sum"
   | "avg"
   | "min"
@@ -18,12 +19,198 @@ type ReportFilterOperator =
   | "equals"
   | "notEquals"
   | "contains"
+  | "notContains"
   | "startsWith"
   | "endsWith"
   | "gt"
   | "gte"
   | "lt"
-  | "lte";
+  | "lte"
+  | "isBlank"
+  | "isNotBlank"
+  | "in"
+  | "notIn"
+  | "customRange";
+
+const MAX_FILTER_DEPTH = 5;
+const MAX_FILTER_CONDITIONS = 30;
+const dateGroupBuckets = new Set(["day", "week", "month", "quarter", "year"]);
+const virtualReportColumns = new Set(["count"]);
+
+function isVirtualReportColumn(column: string): boolean {
+  return virtualReportColumns.has(column);
+}
+
+function parseDateValue(value: unknown): Date | null {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getAllowedOperators(field: ReportField): Set<string> {
+  const base = new Set([
+    "equals",
+    "notEquals",
+  ]);
+
+  if (field.type === "string" || field.type === "enum") {
+    base.add("contains");
+    base.add("startsWith");
+    base.add("endsWith");
+    base.add("notContains");
+    base.add("isBlank");
+    base.add("isNotBlank");
+    base.add("in");
+    base.add("notIn");
+  }
+
+  if (field.type === "number" || field.type === "date") {
+    base.add("gt");
+    base.add("gte");
+    base.add("lt");
+    base.add("lte");
+  }
+
+  base.add("isBlank");
+  base.add("isNotBlank");
+  base.add("in");
+  base.add("notIn");
+
+  if (field.type === "date") {
+    base.add("customRange");
+    for (const operator of relativeDateOperators) {
+      base.add(operator);
+    }
+  }
+
+  return base;
+}
+
+export function validateFilterTree(filterTree: any, depth = 0): void {
+  if (!filterTree) {
+    return;
+  }
+
+  if (depth > MAX_FILTER_DEPTH) {
+    throw new Error(`Filter depth exceeded: max ${MAX_FILTER_DEPTH}`);
+  }
+
+  if (typeof filterTree === "object" && (filterTree.type === "AND" || filterTree.type === "OR")) {
+    const conditions = Array.isArray(filterTree.conditions) ? filterTree.conditions : [];
+
+    if (conditions.length > MAX_FILTER_CONDITIONS) {
+      throw new Error(`Filter condition limit exceeded: max ${MAX_FILTER_CONDITIONS}`);
+    }
+
+    for (const condition of conditions) {
+      validateFilterTree(condition, depth + 1);
+    }
+    return;
+  }
+
+  if (filterTree && typeof filterTree === "object" && filterTree.field && filterTree.operator) {
+    const fieldName = String(filterTree.field);
+    const field = REPORT_OBJECTS[filterTree.objectName || "Lead"]?.fields[fieldName];
+    if (!field) {
+      throw new Error(`Unknown report field: ${fieldName}`);
+    }
+
+    if (!getAllowedOperators(field).has(String(filterTree.operator))) {
+      throw new Error(`Invalid operator "${filterTree.operator}" for field "${fieldName}"`);
+    }
+
+    if (field.type === "date" && String(filterTree.operator) === "customRange") {
+      const value = filterTree.value;
+      const range = value && typeof value === "object" ? value as Record<string, unknown> : null;
+      const start = parseDateValue(range?.start);
+      const end = parseDateValue(range?.end);
+
+      if (!start || !end) {
+        throw new Error("Custom date range requires valid start and end values");
+      }
+
+      if (start.getTime() > end.getTime()) {
+        throw new Error("Custom date range start must be before end");
+      }
+    }
+  }
+}
+
+export function validateReportRequest(input: Partial<RunReportInput> & { objectName?: string; columns?: string[]; filters?: ReportFilter[] }): void {
+  if (!input.objectName) {
+    throw new Error("Report object name is required");
+  }
+
+  if (!input.columns?.length) {
+    throw new Error("At least one report column is required");
+  }
+
+  const rowGroups = input.rowGroups || (input.groupBy ? [input.groupBy] : []);
+  const columnGroups = input.columnGroups || (input.groupColumn ? [input.groupColumn] : []);
+  if (rowGroups.length > 2) {
+    throw new Error("You can add up to 2 row groupings.");
+  }
+  if (columnGroups.length > 2) {
+    throw new Error("You can add up to 2 column groupings.");
+  }
+  if (new Set(rowGroups).size !== rowGroups.length || new Set(columnGroups).size !== columnGroups.length) {
+    throw new Error("A field cannot be grouped more than once.");
+  }
+  if (rowGroups.some((field) => columnGroups.includes(field))) {
+    throw new Error("A field cannot be grouped in both rows and columns.");
+  }
+
+  const objectConfig = REPORT_OBJECTS[input.objectName];
+  if (!objectConfig) {
+    return;
+  }
+
+  for (const column of input.columns) {
+    if (isVirtualReportColumn(column)) continue;
+    const field = objectConfig.fields[column];
+    if (!field) {
+      throw new Error(`Unknown report column: ${column}`);
+    }
+  }
+
+  for (const group of [...rowGroups, ...columnGroups]) {
+    if (!objectConfig.fields[group]) {
+      throw new Error(`Unknown group field: ${group}`);
+    }
+  }
+
+  for (const filter of input.filters || []) {
+    if (!filter || typeof filter !== "object") {
+      throw new Error("Invalid report filter payload");
+    }
+
+    const field = objectConfig.fields[filter.field];
+    if (!field) {
+      throw new Error(`Unknown report field: ${filter.field}`);
+    }
+
+    if (!getAllowedOperators(field).has(String(filter.operator))) {
+      throw new Error(`Invalid operator "${filter.operator}" for field "${filter.field}"`);
+    }
+
+    if (field.type === "date" && String(filter.operator) === "customRange") {
+      const range = filter.value && typeof filter.value === "object" ? filter.value as Record<string, unknown> : null;
+      const start = parseDateValue(range?.start);
+      const end = parseDateValue(range?.end);
+
+      if (!start || !end) {
+        throw new Error("Custom date range requires valid start and end values");
+      }
+
+      if (start.getTime() > end.getTime()) {
+        throw new Error("Custom date range start must be before end");
+      }
+    }
+  }
+}
 
 export interface ReportFilter {
   field: string;
@@ -33,22 +220,69 @@ export interface ReportFilter {
 
 export interface RunReportInput {
   tenantId: string;
+  userId?: string;
   objectName: string;
   columns: string[];
   filters?: ReportFilter[];
+  filterTree?: FilterTree;
   crossFilter?: {
     objectName: string;
     mode: "with" | "without";
   };
   filterLogic?: "AND" | "OR";
+  showMe?: "all" | "mine";
   groupBy?: string;
   groupColumn?: string;
   rowGroups?: string[];
   columnGroups?: string[];
+  groupOptions?: Record<string, { dateBucket?: string }>;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
+  sortRules?: { field: string; order: "asc" | "desc" }[];
   limit?: number;
   aggregates?: ReportAggregate[];
+}
+
+export type FilterTree =
+  | { type: "AND" | "OR"; conditions: FilterTree[] }
+  | { filterIndex: number };
+
+export function parseFilterExpression(expression: string, filterCount: number): FilterTree | undefined {
+  const tokens = expression.match(/\(|\)|AND|OR|\d+/gi) || [];
+  let position = 0;
+  const parsePrimary = (): FilterTree => {
+    const token = tokens[position++];
+    if (token === "(") {
+      const node = parseOr();
+      if (tokens[position++] !== ")") throw new Error("Filter expression has an unmatched parenthesis");
+      return node;
+    }
+    const index = Number(token);
+    if (!Number.isInteger(index) || index < 1 || index > filterCount) throw new Error(`Filter expression references invalid filter ${token}`);
+    return { filterIndex: index - 1 };
+  };
+  const parseAnd = (): FilterTree => {
+    let node = parsePrimary();
+    while (String(tokens[position]).toUpperCase() === "AND") {
+      position += 1;
+      const right = parsePrimary();
+      node = { type: "AND", conditions: [node, right] };
+    }
+    return node;
+  };
+  const parseOr = (): FilterTree => {
+    let node = parseAnd();
+    while (String(tokens[position]).toUpperCase() === "OR") {
+      position += 1;
+      const right = parseAnd();
+      node = { type: "OR", conditions: [node, right] };
+    }
+    return node;
+  };
+  if (!expression.trim()) return undefined;
+  const tree = parseOr();
+  if (position !== tokens.length) throw new Error("Filter expression contains unexpected text");
+  return tree;
 }
 
 interface DynamicObjectConfig {
@@ -80,11 +314,17 @@ interface PivotRow {
 const relativeDateOperators = new Set([
   "today",
   "yesterday",
+  "tomorrow",
   "thisWeek",
   "lastWeek",
+  "nextWeek",
   "thisMonth",
   "lastMonth",
+  "nextMonth",
+  "thisQuarter",
+  "lastQuarter",
   "thisYear",
+  "lastYear",
   "last90Days",
 ]);
 
@@ -108,6 +348,12 @@ function dateRange(
       end.setDate(end.getDate() + 1);
       break;
 
+    case "tomorrow":
+      start.setDate(start.getDate() + 1);
+      end.setTime(start.getTime());
+      end.setDate(end.getDate() + 1);
+      break;
+
     case "thisWeek": {
       const day = start.getDay();
       start.setDate(start.getDate() - day);
@@ -119,6 +365,14 @@ function dateRange(
     case "lastWeek": {
       const day = start.getDay();
       start.setDate(start.getDate() - day - 7);
+      end.setTime(start.getTime());
+      end.setDate(end.getDate() + 7);
+      break;
+    }
+
+    case "nextWeek": {
+      const day = start.getDay();
+      start.setDate(start.getDate() - day + 7);
       end.setTime(start.getTime());
       end.setDate(end.getDate() + 7);
       break;
@@ -137,8 +391,32 @@ function dateRange(
       ).getTime());
       break;
 
+    case "nextMonth":
+      start.setMonth(start.getMonth() + 1, 1);
+      end.setTime(new Date(start.getFullYear(), start.getMonth() + 1, 1).getTime());
+      break;
+
+    case "thisQuarter": {
+      const quarterStart = Math.floor(start.getMonth() / 3) * 3;
+      start.setMonth(quarterStart, 1);
+      end.setTime(new Date(start.getFullYear(), quarterStart + 3, 1).getTime());
+      break;
+    }
+
+    case "lastQuarter": {
+      const quarterStart = Math.floor(start.getMonth() / 3) * 3 - 3;
+      start.setMonth(quarterStart, 1);
+      end.setTime(new Date(start.getFullYear(), quarterStart + 3, 1).getTime());
+      break;
+    }
+
     case "thisYear":
       end.setFullYear(end.getFullYear() + 1, 0, 1);
+      break;
+
+    case "lastYear":
+      start.setFullYear(start.getFullYear() - 1, 0, 1);
+      end.setTime(new Date(start.getFullYear() + 1, 0, 1).getTime());
       break;
 
     case "last90Days":
@@ -199,19 +477,56 @@ function convertValue(value: unknown, field: ReportField) {
   }
 }
 
-function createCondition(
+export function createCondition(
   field: ReportField,
   operator: string,
   value: unknown,
 ) {
-  if (
-    field.type === "date" &&
-    relativeDateOperators.has(operator)
-  ) {
+  if (field.type === "date" && relativeDateOperators.has(operator)) {
     return dateRange(operator);
   }
 
+  if (field.type === "date" && operator === "customRange") {
+    const range = value && typeof value === "object" ? value as Record<string, unknown> : null;
+    const start = parseDateValue(range?.start);
+    const end = parseDateValue(range?.end);
+
+    if (!start || !end) {
+      throw new Error("Custom date range requires valid start and end values");
+    }
+
+    if (start.getTime() > end.getTime()) {
+      throw new Error("Custom date range start must be before end");
+    }
+
+    return {
+      gte: start,
+      lt: end,
+    };
+  }
+
+  if (value === undefined || value === null || value === "") {
+    if (field.type === "date" || field.type === "number") {
+      return { not: null };
+    }
+  }
+
   const convertedValue = convertValue(value, field);
+  const isStringLike = field.type === "string" || field.type === "enum";
+  const stringOnlyOperators = new Set([
+    "contains",
+    "notContains",
+    "startsWith",
+    "endsWith",
+  ]);
+
+  if (field.type === "date" && convertedValue instanceof Date && Number.isNaN(convertedValue.getTime())) {
+    return { not: null };
+  }
+
+  if (stringOnlyOperators.has(operator) && !isStringLike) {
+    return { equals: convertedValue };
+  }
 
   switch (operator) {
     case "equals":
@@ -225,6 +540,9 @@ function createCondition(
         contains: String(convertedValue ?? ""),
         mode: "insensitive",
       };
+
+    case "notContains":
+      return { not: { contains: String(convertedValue ?? ""), mode: "insensitive" } };
 
     case "startsWith":
       return {
@@ -250,6 +568,18 @@ function createCondition(
     case "lte":
       return { lte: convertedValue };
 
+    case "isBlank":
+      return { equals: null };
+
+    case "isNotBlank":
+      return { not: null };
+
+    case "in":
+      return { in: Array.isArray(value) ? value.map((item) => convertValue(item, field)) : String(value).split(",").map((item) => convertValue(item.trim(), field)) };
+
+    case "notIn":
+      return { notIn: Array.isArray(value) ? value.map((item) => convertValue(item, field)) : String(value).split(",").map((item) => convertValue(item.trim(), field)) };
+
     default:
       throw new Error(`Unsupported operator: ${operator}`);
   }
@@ -271,28 +601,91 @@ function buildWhere(
   tenantId: string,
   filters: ReportFilter[],
   filterLogic: "AND" | "OR" = "AND",
+  filterTree?: FilterTree,
+  showMe: "all" | "mine" = "all",
+  userId?: string,
 ) {
-  if (filters.length === 0) {
-    return { tenantId };
+  const validFilters = filters.filter((filter) => {
+    const field = objectConfig.fields[filter.field];
+    if (!field) {
+      throw new Error(`Unknown report field: ${filter.field}`);
+    }
+
+    const valueOptional = ['isBlank', 'isNotBlank', 'customRange', ...relativeDateOperators];
+    if (valueOptional.includes(filter.operator)) {
+      return true;
+    }
+
+    if (field.type === "date") {
+      const parsed = new Date(String(filter.value));
+      return !Number.isNaN(parsed.getTime());
+    }
+
+    return true;
+  });
+
+  const systemConditions = showMe === "mine" && userId ? [{ ownerId: userId }] : [];
+  if (validFilters.length === 0) {
+    return { AND: [{ tenantId }, ...systemConditions] };
   }
 
-  const filterConditions = filters.map((filter) => {
+  const buildFilterWhere = (filter: ReportFilter, field: ReportField): Record<string, unknown> => {
+    const isStringLike = field.type === "string" || field.type === "enum";
+    const isRequiredIdentifier = field.path === "id";
+    const isBlankValue = isStringLike && (filter.operator === "isBlank" || (filter.operator === "equals" && filter.value === ""));
+    const isNotBlankValue = isStringLike && (filter.operator === "isNotBlank" || (filter.operator === "notEquals" && filter.value === ""));
+    if (isRequiredIdentifier && isBlankValue) return buildNestedObject(field.path, { equals: "" });
+    if (isRequiredIdentifier && isNotBlankValue) return buildNestedObject(field.path, { not: "" });
+    if (isBlankValue) {
+      return {
+        OR: [
+          buildNestedObject(field.path, { equals: null }),
+          buildNestedObject(field.path, { equals: "" }),
+        ],
+      };
+    }
+    if (isNotBlankValue) {
+      return {
+        AND: [
+          buildNestedObject(field.path, { not: null }),
+          buildNestedObject(field.path, { not: "" }),
+        ],
+      };
+    }
+    return buildNestedObject(field.path, createCondition(field, filter.operator, filter.value));
+  };
+
+  const buildTreeWhere = (node: FilterTree): Record<string, unknown> => {
+    if ("filterIndex" in node) {
+      const filter = filters[node.filterIndex];
+      if (!filter) throw new Error(`Filter expression references invalid filter ${node.filterIndex + 1}`);
+      const field = objectConfig.fields[filter.field];
+      if (!field) throw new Error(`Unknown report field: ${filter.field}`);
+      return buildFilterWhere(filter, field);
+    }
+    const conditions = node.conditions.map(buildTreeWhere);
+    return node.type === "OR" ? { OR: conditions } : { AND: conditions };
+  };
+
+  if (filterTree) {
+    return { AND: [{ tenantId }, ...systemConditions, buildTreeWhere(filterTree)] };
+  }
+
+  const filterConditions = validFilters.map((filter) => {
     const field = objectConfig.fields[filter.field];
 
     if (!field) {
       throw new Error(`Unknown report field: ${filter.field}`);
     }
 
-    return buildNestedObject(
-      field.path,
-      createCondition(field, filter.operator, filter.value),
-    );
+    return buildFilterWhere(filter, field);
   });
 
   if (filterLogic === "OR") {
     return {
       AND: [
         { tenantId },
+        ...systemConditions,
         { OR: filterConditions },
       ],
     };
@@ -301,6 +694,7 @@ function buildWhere(
   return {
     AND: [
       { tenantId },
+      ...systemConditions,
       ...filterConditions,
     ],
   };
@@ -308,17 +702,11 @@ function buildWhere(
 
 const relationMap: Record<string, Record<string, string>> = {
   Lead: {
-    Contact: "contacts",
     SiteVisit: "siteVisits",
     Opportunity: "opportunities",
     Quotation: "quotations",
     Booking: "bookings",
     Task: "tasks",
-    Customer: "customer",
-  },
-  Account: {
-    Contact: "contacts",
-    Customer: "customers",
   },
   Opportunity: {
     Quotation: "quotations",
@@ -382,10 +770,7 @@ function matchesFilter(
 ) {
   const actual = getNestedValue(record, field.path);
 
-  if (
-    field.type === "date" &&
-    relativeDateOperators.has(operator)
-  ) {
+  if (field.type === "date" && relativeDateOperators.has(operator)) {
     if (actual == null) {
       return false;
     }
@@ -397,6 +782,23 @@ function matchesFilter(
       timestamp >= range.gte.getTime() &&
       timestamp < range.lt.getTime()
     );
+  }
+
+  if (field.type === "date" && operator === "customRange") {
+    if (actual == null) {
+      return false;
+    }
+
+    const timestamp = new Date(String(actual)).getTime();
+    const range = value && typeof value === "object" ? value as Record<string, unknown> : null;
+    const start = parseDateValue(range?.start);
+    const end = parseDateValue(range?.end);
+
+    if (!start || !end) {
+      throw new Error("Custom date range requires valid start and end values");
+    }
+
+    return timestamp >= start.getTime() && timestamp <= end.getTime();
   }
 
   const expected = convertValue(value, field);
@@ -414,6 +816,9 @@ function matchesFilter(
       return String(actual ?? "").toLowerCase().includes(
         String(expected ?? "").toLowerCase(),
       );
+
+    case "notContains":
+      return !String(actual ?? "").toLowerCase().includes(String(expected ?? "").toLowerCase());
 
     case "startsWith":
       return String(actual ?? "").toLowerCase().startsWith(
@@ -437,9 +842,37 @@ function matchesFilter(
     case "lte":
       return actual != null && expected != null && actual <= expected;
 
+    case "isBlank":
+      return actual == null || actual === "";
+
+    case "isNotBlank":
+      return actual != null && actual !== "";
+
+    case "in": {
+      const values = Array.isArray(value) ? value : String(value ?? "").split(",").map((item) => item.trim());
+      return values.some((item) => String(actual ?? "").toLowerCase() === String(item).toLowerCase());
+    }
+
+    case "notIn": {
+      const values = Array.isArray(value) ? value : String(value ?? "").split(",").map((item) => item.trim());
+      return !values.some((item) => String(actual ?? "").toLowerCase() === String(item).toLowerCase());
+    }
+
     default:
       throw new Error(`Unsupported operator: ${operator}`);
   }
+}
+
+function matchesFilterTree(record: unknown, tree: FilterTree, filters: ReportFilter[], objectConfig: { fields: Record<string, ReportField> }): boolean {
+  if ("filterIndex" in tree) {
+    const filter = filters[tree.filterIndex];
+    if (!filter) return false;
+    const field = objectConfig.fields[filter.field];
+    if (!field) throw new Error(`Unknown report field: ${filter.field}`);
+    return matchesFilter(record, field, filter.operator, filter.value);
+  }
+  const matches = tree.conditions.map((condition) => matchesFilterTree(record, condition, filters, objectConfig));
+  return tree.type === "OR" ? matches.some(Boolean) : matches.every(Boolean);
 }
 
 function calculateAggregate(
@@ -449,6 +882,13 @@ function calculateAggregate(
 ): number {
   if (aggregate.function === "count") {
     return records.length;
+  }
+
+  if (aggregate.function === "uniqueCount") {
+    if (!aggregate.field) return 0;
+    const field = objectConfig.fields[aggregate.field];
+    if (!field) throw new Error(`Unknown aggregate field: ${aggregate.field}`);
+    return new Set(records.map((record) => JSON.stringify(getNestedValue(record, field.path))).filter((value) => value !== undefined && value !== "null")).size;
   }
 
   if (!aggregate.field) {
@@ -547,6 +987,11 @@ function buildRows(
     const row: Record<string, unknown> = {};
 
     for (const column of columns) {
+      if (isVirtualReportColumn(column)) {
+        row[column] = 1;
+        continue;
+      }
+
       const field = objectConfig.fields[column];
 
       if (!field) {
@@ -564,6 +1009,7 @@ function groupValue(
   record: any,
   fieldNames: string[],
   objectConfig: { fields: Record<string, ReportField> },
+  groupOptions: Record<string, { dateBucket?: string }> = {},
 ) {
   const values: Record<string, string> = {};
 
@@ -575,7 +1021,32 @@ function groupValue(
     }
 
     const raw = getNestedValue(record, field.path);
-    values[fieldName] = raw == null || raw === "" ? "(Blank)" : String(raw);
+    if (raw == null || raw === "") {
+      values[fieldName] = "(Blank)";
+      continue;
+    }
+    if (field.type === "date") {
+      const date = new Date(String(raw));
+      if (!Number.isNaN(date.getTime())) {
+        const bucket = groupOptions[fieldName]?.dateBucket || "day";
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        if (bucket === "year") values[fieldName] = String(year);
+        else if (bucket === "quarter") values[fieldName] = `Q${Math.floor(month / 3) + 1} ${year}`;
+        else if (bucket === "month") values[fieldName] = date.toLocaleString("en", { month: "long", year: "numeric" });
+        else if (bucket === "week") {
+          const start = new Date(date);
+          start.setHours(0, 0, 0, 0);
+          start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+          values[fieldName] = `Week of ${start.toISOString().slice(0, 10)}`;
+        } else values[fieldName] = date.toISOString().slice(0, 10);
+        continue;
+      }
+    }
+    const displayValue = typeof raw === "object"
+      ? (raw as Record<string, unknown>).name || (raw as Record<string, unknown>).label || (raw as Record<string, unknown>).fullName || (raw as Record<string, unknown>).displayName
+      : raw;
+    values[fieldName] = displayValue == null || displayValue === "" ? "(Blank)" : String(displayValue);
   }
 
   return values;
@@ -591,7 +1062,69 @@ function displayGroupKey(groupValues: Record<string, string>, fields: string[]) 
   return fields.map((field) => groupValues[field]).join(" / ");
 }
 
+export function canAccessReportForUser(
+  report: { createdBy?: string | null; isShared?: boolean | null; tenantId?: string | null },
+  user: { id: string; tenantId: string; isSuperAdmin?: boolean },
+  permissions: string[] = [],
+) {
+  if (user.isSuperAdmin) {
+    return true;
+  }
+
+  if (report.tenantId && report.tenantId !== user.tenantId) {
+    return false;
+  }
+
+  if (!permissions.includes('REPORT_VIEW') && !permissions.includes('REPORT_READ')) {
+    return false;
+  }
+
+  return report.createdBy === user.id || Boolean(report.isShared);
+}
+
+export function canAccessDashboardForUser(
+  dashboard: { createdBy?: string | null; isDefault?: boolean | null; tenantId?: string | null },
+  user: { id: string; tenantId: string; isSuperAdmin?: boolean },
+  permissions: string[] = [],
+) {
+  if (user.isSuperAdmin) {
+    return true;
+  }
+
+  if (dashboard.tenantId && dashboard.tenantId !== user.tenantId) {
+    return false;
+  }
+
+  if (!permissions.includes('DASHBOARD_READ')) {
+    return false;
+  }
+
+  return dashboard.createdBy === user.id || Boolean(dashboard.isDefault);
+}
+
+export function canAccessReportFolderForUser(
+  folder: { createdBy?: string | null; isShared?: boolean | null; tenantId?: string | null },
+  user: { id: string; tenantId: string; isSuperAdmin?: boolean },
+  permissions: string[] = [],
+) {
+  if (user.isSuperAdmin) {
+    return true;
+  }
+
+  if (folder.tenantId && folder.tenantId !== user.tenantId) {
+    return false;
+  }
+
+  if (!permissions.includes('REPORT_VIEW') && !permissions.includes('REPORT_READ')) {
+    return false;
+  }
+
+  return folder.createdBy === user.id || Boolean(folder.isShared);
+}
+
 export async function runReport(input: RunReportInput) {
+  validateReportRequest(input);
+
   const rowGroups = input.rowGroups?.length
     ? [...input.rowGroups]
     : input.groupBy
@@ -603,6 +1136,11 @@ export async function runReport(input: RunReportInput) {
     : input.groupColumn
       ? [input.groupColumn]
       : [];
+  const groupOptions = input.groupOptions || {};
+  for (const field of [...rowGroups, ...columnGroups]) {
+    const bucket = groupOptions[field]?.dateBucket;
+    if (bucket && !dateGroupBuckets.has(bucket)) throw new Error(`Invalid date grouping bucket: ${bucket}`);
+  }
 
   let objectConfig: ReportObjectConfig = REPORT_OBJECTS[input.objectName];
   let dynamicRecords: any[] | null = null;
@@ -690,6 +1228,7 @@ export async function runReport(input: RunReportInput) {
   const select: Record<string, any> = {};
 
   for (const column of input.columns) {
+    if (isVirtualReportColumn(column)) continue;
     const field = objectConfig.fields[column];
     if (!field) {
       throw new Error(`Unknown report column: ${column}`);
@@ -749,6 +1288,9 @@ export async function runReport(input: RunReportInput) {
           input.tenantId,
           input.filters || [],
           input.filterLogic || "AND",
+          input.filterTree,
+          input.showMe || "all",
+          input.userId,
         ),
         input.objectName,
         input.crossFilter,
@@ -763,6 +1305,8 @@ export async function runReport(input: RunReportInput) {
         if (filters.length === 0) {
           return true;
         }
+
+        if (input.filterTree) return matchesFilterTree(record, input.filterTree, filters, objectConfig);
 
         const matches = filters.map((filter) => {
           const field = objectConfig.fields[filter.field];
@@ -785,26 +1329,25 @@ export async function runReport(input: RunReportInput) {
       })
     : fetchedRecords;
 
-  if (input.sortBy) {
-    const sortField = objectConfig.fields[input.sortBy];
-
+  const sortRules = input.sortRules?.length
+    ? input.sortRules
+    : input.sortBy ? [{ field: input.sortBy, order: input.sortOrder || "desc" }] : [];
+  for (const rule of sortRules) {
+    if (!objectConfig.fields[rule.field]) throw new Error(`Unknown sort field: ${rule.field}`);
+  }
+  if (sortRules.length) {
     workingRecords.sort((a: any, b: any) => {
-      const aValue = getNestedValue(a, sortField.path);
-      const bValue = getNestedValue(b, sortField.path);
-
-      if (aValue == null && bValue == null) return 0;
-      if (aValue == null) return 1;
-      if (bValue == null) return -1;
-
-      const comparison = aValue === bValue
-        ? 0
-        : aValue > bValue
-          ? 1
-          : -1;
-
-      return input.sortOrder === "asc"
-        ? comparison
-        : -comparison;
+      for (const rule of sortRules) {
+        const field = objectConfig.fields[rule.field];
+        const aValue = getNestedValue(a, field.path);
+        const bValue = getNestedValue(b, field.path);
+        if (aValue == null && bValue == null) continue;
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
+        const comparison = aValue === bValue ? 0 : aValue > bValue ? 1 : -1;
+        if (comparison !== 0) return rule.order === "asc" ? comparison : -comparison;
+      }
+      return 0;
     });
   }
 
@@ -845,7 +1388,7 @@ export async function runReport(input: RunReportInput) {
     >();
 
     for (const record of workingRecords) {
-      const values = groupValue(record, rowGroups, objectConfig);
+      const values = groupValue(record, rowGroups, objectConfig, groupOptions);
       const key = groupKey(values, rowGroups);
       const existing = allGroups.get(key);
 
@@ -868,7 +1411,7 @@ export async function runReport(input: RunReportInput) {
     const previewRecordsByGroup = new Map<string, any[]>();
 
     for (const record of limitedRecords) {
-      const values = groupValue(record, rowGroups, objectConfig);
+      const values = groupValue(record, rowGroups, objectConfig, groupOptions);
       const key = groupKey(values, rowGroups);
       const list = previewRecordsByGroup.get(key) || [];
       list.push(record);
@@ -892,7 +1435,7 @@ export async function runReport(input: RunReportInput) {
     }));
 
     groupedDetailRows = limitedRecords.map((record: any) => {
-      const values = groupValue(record, rowGroups, objectConfig);
+      const values = groupValue(record, rowGroups, objectConfig, groupOptions);
       const key = groupKey(values, rowGroups);
       const counts: Record<string, number> = {};
       const totalCount = groupCountsByKey.get(key) || 0;
@@ -937,7 +1480,7 @@ export async function runReport(input: RunReportInput) {
     >();
 
     for (const record of workingRecords) {
-      const values = groupValue(record, columnGroups, objectConfig);
+      const values = groupValue(record, columnGroups, objectConfig, groupOptions);
       const key = groupKey(values, columnGroups);
 
       if (!distinctColumnGroups.has(key)) {
@@ -949,7 +1492,7 @@ export async function runReport(input: RunReportInput) {
 
     for (const [key, groupValues] of distinctColumnGroups) {
       const count = workingRecords.filter((record: any) => {
-        const current = groupValue(record, columnGroups, objectConfig);
+        const current = groupValue(record, columnGroups, objectConfig, groupOptions);
         return groupKey(current, columnGroups) === key;
       }).length;
 
@@ -970,8 +1513,8 @@ export async function runReport(input: RunReportInput) {
       >();
 
       for (const record of workingRecords) {
-        const rowValues = groupValue(record, rowGroups, objectConfig);
-        const columnValues = groupValue(record, columnGroups, objectConfig);
+        const rowValues = groupValue(record, rowGroups, objectConfig, groupOptions);
+        const columnValues = groupValue(record, columnGroups, objectConfig, groupOptions);
 
         const rowKey = groupKey(rowValues, rowGroups);
         const columnKey = groupKey(columnValues, columnGroups);

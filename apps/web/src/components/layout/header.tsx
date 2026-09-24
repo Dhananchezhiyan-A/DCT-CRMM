@@ -65,7 +65,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             onClick={() => setSearchOpen(true)}
           >
             <Search className="mr-2 h-4 w-4" />
-            Search leads, contacts, opportunities...
+            Search leads, opportunities, tasks...
           </Button>
         </div>
         <div className="flex items-center gap-2">

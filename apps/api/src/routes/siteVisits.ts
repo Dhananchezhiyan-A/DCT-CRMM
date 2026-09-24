@@ -224,7 +224,7 @@ router.patch('/:id/complete', authorize('SiteVisit', 'edit'), async (req: AuthRe
             objectType: 'Lead',
             objectId: existing.leadId,
             oldValues: { status: 'SITE_VISIT_SCHEDULED' },
-            newValues: { status: 'SITE_VISIT_HAPPENED', siteVisitId: existing.id },
+            newValues: { status: 'SITE_VISIT_HAPPENED', siteVisitId: existing.id, reason: notes || 'Site visit completed' },
           },
         });
       }

@@ -20,7 +20,7 @@ function parseDateFilter(startDate?: string, endDate?: string) {
 
 router.get('/leads', authorize('Lead', 'read'), async (req: AuthRequest, res: Response) => {
   try {
-    const { startDate, endDate, groupBy = 'day' } = req.query;
+    const { startDate, endDate } = req.query;
 
     const dateFilter = parseDateFilter(startDate as string, endDate as string);
 
@@ -192,7 +192,7 @@ router.get('/bookings', authorize('Booking', 'read'), async (req: AuthRequest, r
       prisma.booking.findMany({
         where,
         include: {
-          customer: { select: { firstName: true, lastName: true } },
+          lead: { select: { firstName: true, lastName: true } },
           unit: { select: { number: true, type: true } },
           project: { select: { name: true } },
         },
@@ -267,8 +267,7 @@ router.get('/payments', authorize('Payment', 'read'), async (req: AuthRequest, r
       prisma.payment.findMany({
         where,
         include: {
-          booking: { select: { number: true } },
-          customer: { select: { firstName: true, lastName: true } },
+          booking: { select: { number: true, lead: { select: { firstName: true, lastName: true } } } },
         },
         orderBy: { createdAt: 'desc' },
         take: 10,
@@ -369,15 +368,6 @@ router.get('/pipeline', authorize('Opportunity', 'read'), async (req: AuthReques
     const totalPipeline = pipelineData
       .filter((p) => !['CLOSED_WON', 'CLOSED_LOST'].includes(p.stage))
       .reduce((acc, p) => acc + p.amount, 0);
-
-    const weightedPipeline = await prisma.opportunity.aggregate({
-      where: {
-        tenantId: req.tenantId!,
-        stage: { notIn: ['CLOSED_WON', 'CLOSED_LOST'] },
-        probability: { not: null },
-      },
-      _sum: { amount: true },
-    });
 
     const opportunitiesWithProb = await prisma.opportunity.findMany({
       where: {

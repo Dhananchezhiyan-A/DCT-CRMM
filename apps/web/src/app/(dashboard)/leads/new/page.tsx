@@ -30,6 +30,7 @@ export default function NewLeadPage() {
     source: "WEBSITE",
     status: "NEW",
   });
+  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -54,8 +55,14 @@ export default function NewLeadPage() {
 
   const validate = (): boolean => {
     const errors: string[] = [];
+    const nextFieldErrors: Record<string, string> = {};
     if (!formData.lastName?.trim()) errors.push("Last name is required");
     if (!formData.company?.trim()) errors.push("Company is required");
+    if (!String(formData.phone ?? "").trim()) {
+      errors.push("Phone number is required.");
+      nextFieldErrors.phone = "Phone number is required.";
+    }
+    setFieldErrors(nextFieldErrors);
     if (errors.length > 0) {
       setError(errors.join(". "));
       return false;
@@ -66,11 +73,19 @@ export default function NewLeadPage() {
   const handleFieldChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setError(null);
+    if (field === "phone") {
+      setFieldErrors((prev) => {
+        if (!prev.phone) return prev;
+        const { phone: _phone, ...rest } = prev;
+        return rest;
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
 
     if (!validate()) return;
 
@@ -89,6 +104,9 @@ export default function NewLeadPage() {
     } catch (err: any) {
       const message =
         err?.response?.data?.error || err?.response?.data?.message || err?.message || "Failed to create lead";
+      if (message === "Phone number already exists for another lead.") {
+        setFieldErrors({ phone: message });
+      }
       setError(message);
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
@@ -143,6 +161,7 @@ export default function NewLeadPage() {
             onChange={handleFieldChange}
             layout={layout}
             fields={fields}
+            fieldErrors={fieldErrors}
           />
         )}
 

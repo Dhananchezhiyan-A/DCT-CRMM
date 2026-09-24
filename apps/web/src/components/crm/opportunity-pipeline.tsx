@@ -23,7 +23,6 @@ export interface Opportunity {
   stage: string;
   probability: number;
   closeDate: string;
-  accountName: string;
   assignedTo: string;
   currency?: string;
 }
@@ -179,7 +178,7 @@ export function OpportunityPipeline({
                       </DropdownMenu>
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">
-                      {opportunity.accountName}
+                      {opportunity.assignedTo}
                     </p>
                     <div className="flex items-center justify-between">
                       <span className="font-medium">

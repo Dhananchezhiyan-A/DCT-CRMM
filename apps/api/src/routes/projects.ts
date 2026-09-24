@@ -5,7 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
 import { authorize } from '../middleware/authorization';
 import { auditLog } from '../middleware/audit';
-import { ApiResponse, PaginatedResponse } from '../types';
+import { PaginatedResponse } from '../types';
 import { Prisma } from '@prisma/client';
 
 const router = Router();

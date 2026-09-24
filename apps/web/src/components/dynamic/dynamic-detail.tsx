@@ -107,7 +107,9 @@ export function DynamicDetail({
         if (Array.isArray(parsed)) {
           parsedSections = parsed;
         }
-      } catch {}
+      } catch (e) {
+        console.warn("Failed to parse layout sections:", e);
+      }
     }
   }
 

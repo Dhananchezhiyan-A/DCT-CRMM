@@ -118,7 +118,7 @@ export default function SetupProfilesPage() {
   };
 
   const filteredProfiles = profiles.filter((profile) => `${profile.name} ${profile.description || ""}`.toLowerCase().includes(search.toLowerCase()));
-  const systemPermissions = allPermissions.filter((permission) => ["SYSTEM", "USER", "ROLE", "PROFILE", "PERMISSION_SET", "REPORT", "DASHBOARD"].includes(permission.module));
+  const systemPermissions = allPermissions.filter((permission) => ["SYSTEM", "USER", "ROLE", "PROFILE", "PERMISSION_SET", "REPORT", "DASHBOARD", "DATA"].includes(permission.module));
 
   return <div className="space-y-6">
     <div className="flex items-start justify-between gap-4"><div className="flex items-center gap-3"><Link href="/setup" className="text-muted-foreground hover:text-primary"><ArrowLeft className="h-4 w-4" /></Link><div><p className="text-sm text-muted-foreground">Setup / Security Control</p><h1 className="text-2xl font-semibold">Profiles</h1><p className="text-sm text-muted-foreground">Define the baseline access applied to users in your company.</p></div></div><Button onClick={() => setCreateOpen(true)}>Create Profile</Button></div>

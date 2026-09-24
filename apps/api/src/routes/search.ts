@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { prisma } from '@dct-crm/db';
-import { Prisma } from '@prisma/client';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -17,10 +16,8 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     const searchTerm = q as string;
     const allowedTypes = types ? (types as string).split(',') : [
-      'leads', 'contacts', 'accounts', 'customers', 'opportunities', 'bookings', 'payments', 'projects', 'units', 'tasks',
+      'leads', 'opportunities', 'bookings', 'payments', 'projects', 'units', 'tasks',
     ];
-
-    const results: any[] = [];
 
     const searchConfig: Record<string, { model: any; titleField: string; subtitleField: string; urlPrefix: string; whereExtra?: any }> = {
       leads: {
@@ -30,46 +27,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         urlPrefix: '/leads',
         whereExtra: {
           OR: [
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { lastName: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm } },
-            { email: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
-      },
-      contacts: {
-        model: prisma.contact,
-        titleField: 'firstName',
-        subtitleField: 'phone',
-        urlPrefix: '/contacts',
-        whereExtra: {
-          OR: [
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { lastName: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm } },
-            { email: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
-      },
-      accounts: {
-        model: prisma.account,
-        titleField: 'name',
-        subtitleField: 'industry',
-        urlPrefix: '/accounts',
-        whereExtra: {
-          OR: [
-            { name: { contains: searchTerm, mode: 'insensitive' } },
-            { industry: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
-      },
-      customers: {
-        model: prisma.customer,
-        titleField: 'firstName',
-        subtitleField: 'phone',
-        urlPrefix: '/customers',
-        whereExtra: {
-          OR: [
+            { leadNumber: { contains: searchTerm, mode: 'insensitive' } },
             { firstName: { contains: searchTerm, mode: 'insensitive' } },
             { lastName: { contains: searchTerm, mode: 'insensitive' } },
             { phone: { contains: searchTerm } },
@@ -189,38 +147,18 @@ router.get('/quick', async (req: AuthRequest, res: Response) => {
     const searchTerm = q as string;
     const numLimit = Number(limit);
 
-    const [leads, contacts, customers, opportunities, tasks] = await Promise.all([
+    const [leads, opportunities, tasks] = await Promise.all([
       prisma.lead.findMany({
         where: {
           tenantId: req.tenantId!,
           OR: [
+            { leadNumber: { contains: searchTerm, mode: 'insensitive' } },
             { firstName: { contains: searchTerm, mode: 'insensitive' } },
+            { lastName: { contains: searchTerm, mode: 'insensitive' } },
             { phone: { contains: searchTerm } },
           ],
         },
-        select: { id: true, firstName: true, lastName: true, phone: true, status: true },
-        take: numLimit,
-      }),
-      prisma.contact.findMany({
-        where: {
-          tenantId: req.tenantId!,
-          OR: [
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm } },
-          ],
-        },
-        select: { id: true, firstName: true, lastName: true, phone: true },
-        take: numLimit,
-      }),
-      prisma.customer.findMany({
-        where: {
-          tenantId: req.tenantId!,
-          OR: [
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm } },
-          ],
-        },
-        select: { id: true, firstName: true, lastName: true, phone: true },
+        select: { id: true, leadNumber: true, firstName: true, lastName: true, phone: true, status: true },
         take: numLimit,
       }),
       prisma.opportunity.findMany({
@@ -245,8 +183,6 @@ router.get('/quick', async (req: AuthRequest, res: Response) => {
       success: true,
       data: {
         leads: leads.map((l) => ({ ...l, type: 'lead', url: `/leads/${l.id}` })),
-        contacts: contacts.map((c) => ({ ...c, type: 'contact', url: `/contacts/${c.id}` })),
-        customers: customers.map((c) => ({ ...c, type: 'customer', url: `/customers/${c.id}` })),
         opportunities: opportunities.map((o) => ({ ...o, type: 'opportunity', url: `/opportunities/${o.id}` })),
         tasks: tasks.map((t) => ({ ...t, type: 'task', url: `/tasks/${t.id}` })),
       },

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+export const PHONE_DUPLICATE_ERROR = 'Phone number already exists for another lead.';
+
+export function normalizePhone(raw: string): string {
+  return raw.replace(/\s+/g, '');
+}
+
 // ============================================
 // AUTH SCHEMAS
 // ============================================
@@ -37,7 +43,10 @@ export const leadSchema = z.object({
   salutation: z.enum(['MR', 'MS', 'MRS', 'DR', 'PROF']).optional(),
   title: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  phone: z.string({
+    required_error: 'Phone number is required.',
+    invalid_type_error: 'Phone number is required.',
+  }).trim().min(1, 'Phone number is required.').transform(normalizePhone),
   mobile: z.string().optional(),
   website: z.string().url().optional().or(z.literal('')),
   company: z.string().min(1, 'Company is required'),
@@ -59,40 +68,6 @@ export const leadSchema = z.object({
   notes: z.string().optional(),
   ownerId: z.string().optional(),
   projectId: z.string().optional(),
-});
-
-export const contactSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().optional(),
-  email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().min(10),
-  title: z.string().optional(),
-  department: z.string().optional(),
-  isPrimary: z.boolean().default(false),
-  notes: z.string().optional(),
-  leadId: z.string().optional(),
-  accountId: z.string().optional(),
-});
-
-export const accountSchema = z.object({
-  name: z.string().min(1),
-  industry: z.string().optional(),
-  website: z.string().url().optional().or(z.literal('')),
-  phone: z.string().optional(),
-  email: z.string().email().optional().or(z.literal('')),
-  address: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-export const customerSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().optional(),
-  email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().min(10),
-  address: z.string().optional(),
-  notes: z.string().optional(),
-  leadId: z.string().optional(),
-  accountId: z.string().optional(),
 });
 
 export const siteVisitSchema = z.object({
@@ -139,7 +114,6 @@ export const bookingSchema = z.object({
   quotationId: z.string().optional(),
   projectId: z.string().min(1),
   unitId: z.string().min(1),
-  customerId: z.string().optional(),
   ownerId: z.string().optional(),
   totalAmount: z.number().min(0),
   notes: z.string().optional(),
@@ -147,7 +121,6 @@ export const bookingSchema = z.object({
 
 export const paymentSchema = z.object({
   bookingId: z.string().min(1),
-  customerId: z.string().optional(),
   amount: z.number().min(0.01),
   reference: z.string().optional(),
   notes: z.string().optional(),

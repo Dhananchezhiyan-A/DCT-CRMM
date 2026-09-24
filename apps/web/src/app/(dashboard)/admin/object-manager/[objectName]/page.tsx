@@ -1032,7 +1032,7 @@ export default function ObjectSettingsPage() {
                             <SelectValue placeholder="Select object..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {["Lead", "Contact", "Account", "Customer", "Project", "Unit", "Opportunity", "SiteVisit", "Booking", "Payment", "Task", "Quotation"].map((obj) => (
+                            {["Lead", "Project", "Unit", "Opportunity", "SiteVisit", "Booking", "Payment", "Task", "Quotation"].map((obj) => (
                               <SelectItem key={obj} value={obj}>{obj}</SelectItem>
                             ))}
                           </SelectContent>

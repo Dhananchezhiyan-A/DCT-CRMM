@@ -48,6 +48,7 @@ interface LayoutDrivenFormProps {
   onSubmit?: (data: Record<string, any>) => void;
   layout?: any;
   fields?: any[];
+  fieldErrors?: Record<string, string>;
 }
 
 export default function LayoutDrivenForm({
@@ -58,6 +59,7 @@ export default function LayoutDrivenForm({
   onSubmit,
   layout: propLayout,
   fields: propFields,
+  fieldErrors,
 }: LayoutDrivenFormProps) {
   const [layout, setLayout] = React.useState<any>(propLayout || null);
   const [fields, setFields] = React.useState<LayoutField[]>(propFields || []);
@@ -320,6 +322,11 @@ export default function LayoutDrivenForm({
                       )}
                     </Label>
                     {renderField(field, data[field.name])}
+                    {fieldErrors?.[field.name] && (
+                      <p className="text-sm text-destructive" data-testid={`error-${field.name}`}>
+                        {fieldErrors[field.name]}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

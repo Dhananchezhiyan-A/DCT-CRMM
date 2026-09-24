@@ -6,7 +6,6 @@ import {
   generateRecordNumber,
   applyFieldDefaults,
   invalidateCache,
-  getRoleHierarchyUserIds,
 } from './metadata';
 
 interface ListOptions {

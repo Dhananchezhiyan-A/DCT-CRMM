@@ -45,6 +45,9 @@ function ShouldFailBody($method, $url, $body, $name) {
 # ============================================
 # LOGIN
 # ============================================
+$phoneSeed = (Get-Date -Format "yyMMddHHmmss") + (Get-Random -Maximum 999).ToString().PadLeft(3, "0")
+function New-TestPhone([int]$n) { return "+91-9$phoneSeed" + $n.ToString().PadLeft(3, "0") }
+
 Log "`n=== LOGIN ALL USERS ===" "Cyan"
 Login "admin@dctcrm.com" "password123" | Out-Null; Log "  Admin: OK" "Green"
 Login "priya.presales@test.com" "password123" | Out-Null; Log "  Presales: OK" "Green"
@@ -58,9 +61,9 @@ Login "neha@dctcrm.com" "password123" | Out-Null; Log "  Neha Gupta (Presales): 
 # ============================================
 Log "`n=== LEAD NUMBER ===" "Cyan"
 Login "admin@dctcrm.com" "password123" | Out-Null
-$lead = APost "/api/leads" @{firstName="Final"; lastName="TestLead"; company="FinalCorp"; source="WEBSITE"}
+$lead = APost "/api/leads" @{firstName="Final"; lastName="TestLead"; company="FinalCorp"; source="WEBSITE"; phone=(New-TestPhone 1)}
 Pass "Lead created: $($lead.data.leadNumber)"
-$lead2 = APost "/api/leads" @{firstName="Final"; lastName="Test2"; company="FinalCorp"; source="WEBSITE"}
+$lead2 = APost "/api/leads" @{firstName="Final"; lastName="Test2"; company="FinalCorp"; source="WEBSITE"; phone=(New-TestPhone 2)}
 Pass "Lead 2: $($lead2.data.leadNumber)"
 
 $search = AGet "/api/leads?search=$($lead.data.leadNumber)"
@@ -75,7 +78,7 @@ if ($verify.data.leadNumber -eq $lead.data.leadNumber) { Pass "Lead number read-
 # ============================================
 Log "`n=== PRESALES WORKFLOW ===" "Cyan"
 Login "priya.presales@test.com" "password123" | Out-Null
-$pLead = APost "/api/leads" @{firstName="Presales"; lastName="Workflow"; company="PWCorp"; source="WEBSITE"}
+$pLead = APost "/api/leads" @{firstName="Presales"; lastName="Workflow"; company="PWCorp"; source="WEBSITE"; phone=(New-TestPhone 3)}
 Pass "Presales creates lead: $($pLead.data.leadNumber)"
 
 $pInc = APutRaw "/api/leads/$($pLead.data.id)/status" '{"status":"INCOMING","note":"Customer interested"}'
@@ -191,7 +194,7 @@ if ($validStatus.data.status -eq "INCOMING") { Pass "Valid note accepted" } else
 # 6. PUSH TO SVC VALIDATION
 # ============================================
 Log "`n=== PUSH TO SVC VALIDATION ===" "Cyan"
-$pL3 = APost "/api/leads" @{firstName="Push"; lastName="Test"; company="PushCorp"; source="WEBSITE"}
+$pL3 = APost "/api/leads" @{firstName="Push"; lastName="Test"; company="PushCorp"; source="WEBSITE"; phone=(New-TestPhone 4)}
 APutRaw "/api/leads/$($pL3.data.id)/status" '{"status":"INCOMING","note":"Ready"}'
 ShouldFailRaw "POST" "/api/leads/$($pL3.data.id)/push-to-svc" '{}' "No reason"
 ShouldFailRaw "POST" "/api/leads/$($pL3.data.id)/push-to-svc" '{"reason":"  "}' "Whitespace reason"

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/crm/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, MoreHorizontal, Eye, Edit, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -15,11 +16,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { bookingApi } from "@/lib/api";
 
 interface Booking {
   id: string;
   bookingNumber: string;
-  customerName: string;
+  leadName: string;
   projectName: string;
   unitNumber: string;
   amount: number;
@@ -27,42 +29,6 @@ interface Booking {
   bookingDate: string;
   paymentStatus: "pending" | "partial" | "complete";
 }
-
-const bookings: Booking[] = [
-  {
-    id: "1",
-    bookingNumber: "BK-2024-001",
-    customerName: "Neha Sharma",
-    projectName: "Residential Project",
-    unitNumber: "Unit 102",
-    amount: 7500000,
-    status: "confirmed",
-    bookingDate: "2024-01-15T10:00:00Z",
-    paymentStatus: "partial",
-  },
-  {
-    id: "2",
-    bookingNumber: "BK-2024-002",
-    customerName: "Amit Singh",
-    projectName: "Premium Tower",
-    unitNumber: "Unit 501",
-    amount: 15000000,
-    status: "pending",
-    bookingDate: "2024-01-14T14:30:00Z",
-    paymentStatus: "pending",
-  },
-  {
-    id: "3",
-    bookingNumber: "BK-2024-003",
-    customerName: "Vikram Mehta",
-    projectName: "Commercial Complex",
-    unitNumber: "Shop 12",
-    amount: 4500000,
-    status: "completed",
-    bookingDate: "2024-01-10T09:00:00Z",
-    paymentStatus: "complete",
-  },
-];
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -85,6 +51,15 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
+const formatDate = (value: string) => {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+};
+
 const columns: ColumnDef<Booking>[] = [
   {
     accessorKey: "bookingNumber",
@@ -96,8 +71,8 @@ const columns: ColumnDef<Booking>[] = [
     ),
   },
   {
-    accessorKey: "customerName",
-    header: "Customer",
+    accessorKey: "leadName",
+    header: "Lead",
   },
   {
     accessorKey: "projectName",
@@ -111,7 +86,7 @@ const columns: ColumnDef<Booking>[] = [
     accessorKey: "amount",
     header: "Amount",
     cell: ({ row }) => (
-      <span className="font-medium">{formatCurrency(row.getValue("amount"))}</span>
+      <span className="font-medium">{formatCurrency(row.getValue("amount") as number)}</span>
     ),
   },
   {
@@ -141,7 +116,7 @@ const columns: ColumnDef<Booking>[] = [
   {
     accessorKey: "bookingDate",
     header: "Booking Date",
-    cell: ({ row }) => new Date(row.getValue("bookingDate")).toLocaleDateString(),
+    cell: ({ row }) => formatDate(row.getValue("bookingDate") as string),
   },
   {
     id: "actions",
@@ -180,6 +155,70 @@ export default function BookingsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [bookings, setBookings] = React.useState<Booking[]>([]);
+  const [totalItems, setTotalItems] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        setIsLoading(true);
+        const res = await bookingApi.list({ page: currentPage, limit: 20 });
+        if (res.data.success && res.data.data) {
+          const mapped = res.data.data.map((item: any) => ({
+            id: item.id,
+            bookingNumber: item.number || item.id.slice(-8).toUpperCase(),
+            leadName: item.lead
+              ? `${item.lead.firstName} ${item.lead.lastName}`.trim()
+              : "—",
+            projectName: item.project?.name || "—",
+            unitNumber: item.unit?.number || "—",
+            amount: item.totalAmount || 0,
+            status: (item.status || "pending").toLowerCase() as Booking["status"],
+            bookingDate: item.bookingDate || item.createdAt,
+            paymentStatus: (item.payments?.length
+              ? item.payments.every((p: any) => p.status === "COMPLETED")
+                ? "complete"
+                : item.payments.some((p: any) => p.status === "VERIFIED" || p.status === "COMPLETED")
+                  ? "partial"
+                  : "pending"
+              : "pending") as Booking["paymentStatus"],
+          }));
+          setBookings(mapped);
+          setTotalItems(res.data.pagination?.total ?? mapped.length);
+        } else {
+          setBookings([]);
+          setTotalItems(0);
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to load bookings", variant: "destructive" as any });
+        setBookings([]);
+        setTotalItems(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBookings();
+  }, [currentPage, toast]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -187,7 +226,7 @@ export default function BookingsPage() {
         <div>
           <h1 className="text-2xl font-bold">Bookings</h1>
           <p className="text-muted-foreground">
-            Manage property bookings and reservations
+            Manage project unit bookings and reservations
           </p>
         </div>
         <Button onClick={() => toast({ title: "New Booking", description: "Create booking form coming soon" })}>
@@ -201,7 +240,7 @@ export default function BookingsPage() {
         data={bookings}
         searchKey="bookingNumber"
         searchPlaceholder="Search by booking number..."
-        totalItems={bookings.length}
+        totalItems={totalItems}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
       />

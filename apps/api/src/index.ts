@@ -8,9 +8,6 @@ import dotenv from 'dotenv';
 
 import { authRoutes as authRouter } from './routes/auth';
 import { leadRoutes as leadRouter } from './routes/leads';
-import contactRouter from './routes/contacts';
-import accountRouter from './routes/accounts';
-import customerRouter from './routes/customers';
 import siteVisitRouter from './routes/siteVisits';
 import opportunityRouter from './routes/opportunities';
 import quotationRouter from './routes/quotations';
@@ -24,7 +21,7 @@ import { activityRoutes as activityRouter } from './routes/activities';
 import { userRoutes as userRouter } from './routes/users';
 import { roleRoutes as roleRouter } from './routes/roles';
 import { profileRoutes as profileRouter } from './routes/profiles';
-import reportRouter, { reportFolderRouter } from './routes/reports';
+import reportRouter, { reportFolderRouter, reportMetadataRouter } from './routes/reports';
 import { dashboardRoutes as dashboardRouter } from './routes/dashboards';
 import { searchRoutes as searchRouter } from './routes/search';
 import { analyticsRoutes as analyticsRouter } from './routes/analytics';
@@ -45,6 +42,7 @@ import { newPermissionSetRoutes as newPermissionSetRouter } from './routes/permi
 import { userPermissionRoutes as userPermissionRouter } from './routes/userPermissions';
 import { effectivePermissionRoutes as effectivePermissionRouter } from './routes/effectivePermissions';
 import { profilePermissionRoutes as profilePermissionRouter } from './routes/profilePermissions';
+import { dataAdministrationRoutes as dataAdministrationRouter } from './routes/dataAdministration';
 import { companyRoutes as companyRouter } from './routes/companies';
 import setupUsersRouter from './routes/setup/users';
 import setupCompanySettingsRouter from './routes/setup/company-settings';
@@ -82,9 +80,6 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/leads', leadRouter);
-app.use('/api/contacts', contactRouter);
-app.use('/api/accounts', accountRouter);
-app.use('/api/customers', customerRouter);
 app.use('/api/site-visits', siteVisitRouter);
 app.use('/api/opportunities', opportunityRouter);
 app.use('/api/quotations', quotationRouter);
@@ -103,6 +98,7 @@ app.use('/api/roles', roleRouter);
 app.use('/api/profiles', profileRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/report-folders', reportFolderRouter);
+app.use('/api/report-metadata', reportMetadataRouter);
 app.use('/api/dashboards', dashboardRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/analytics', analyticsRouter);
@@ -127,10 +123,13 @@ app.use('/api/new-permission-sets', newPermissionSetRouter);
 app.use('/api/user-permissions', userPermissionRouter);
 app.use('/api/effective-permissions', effectivePermissionRouter);
 app.use('/api/profile-permissions', profilePermissionRouter);
+app.use('/api/data-administration', dataAdministrationRouter);
 app.use('/api/profile-security', profileSecurityRouter);
 app.use('/api/round-robin', roundRobinRouter);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void req;
+  void next;
   console.error('Unhandled error:', err);
   if (!res.headersSent) {
     res.status(500).json({ success: false, error: 'Internal server error', detail: err?.message });

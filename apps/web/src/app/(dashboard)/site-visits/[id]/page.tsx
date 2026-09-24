@@ -1,16 +1,29 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { siteVisitApi } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   ArrowLeft,
   Calendar,
@@ -273,7 +286,7 @@ export default function SiteVisitDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Visit Date</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(siteVisit.visitDate).toLocaleDateString()}
+                      {formatDate(siteVisit.visitDate)}
                     </p>
                   </div>
                 </div>
@@ -282,7 +295,7 @@ export default function SiteVisitDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(siteVisit.createdAt).toLocaleDateString()}
+                      {formatDate(siteVisit.createdAt)}
                     </p>
                   </div>
                 </div>

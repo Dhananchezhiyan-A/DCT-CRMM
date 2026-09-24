@@ -1,16 +1,29 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { quotationApi } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   ArrowLeft,
   Calendar,
@@ -26,7 +39,7 @@ import {
 interface QuotationData {
   id: string;
   quotationNumber: string;
-  customerName: string;
+  leadName: string;
   projectName: string;
   amount: number;
   status: string;
@@ -159,7 +172,7 @@ export default function QuotationDetailPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{quotation.quotationNumber}</h1>
-            <p className="text-muted-foreground">Quotation for {quotation.customerName}</p>
+            <p className="text-muted-foreground">Quotation for {quotation.leadName}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -284,8 +297,8 @@ export default function QuotationDetailPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Customer</span>
-                  <span className="text-sm font-medium">{quotation.customerName}</span>
+                  <span className="text-sm text-muted-foreground">Lead</span>
+                  <span className="text-sm font-medium">{quotation.leadName}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Project</span>
@@ -316,7 +329,7 @@ export default function QuotationDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(quotation.createdAt).toLocaleDateString()}
+                      {formatDate(quotation.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -325,7 +338,7 @@ export default function QuotationDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Valid Until</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(quotation.validUntil).toLocaleDateString()}
+                      {formatDate(quotation.validUntil)}
                     </p>
                   </div>
                 </div>
@@ -334,7 +347,7 @@ export default function QuotationDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Last Updated</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(quotation.updatedAt).toLocaleDateString()}
+                      {formatDate(quotation.updatedAt)}
                     </p>
                   </div>
                 </div>

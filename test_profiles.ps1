@@ -1,5 +1,7 @@
 $baseUrl = "http://localhost:3001"
 $results = @()
+$phoneSeed = (Get-Date -Format "yyMMddHHmmss") + (Get-Random -Maximum 999).ToString().PadLeft(3, "0")
+function New-TestPhone([int]$n) { return "+91-9$phoneSeed" + $n.ToString().PadLeft(3, "0") }
 
 function Log($msg, $color = "White") { Write-Host $msg -ForegroundColor $color }
 function Pass($area) { $script:results += [PSCustomObject]@{ Area=$area; Result="PASS" }; Log "  PASS: $area" "Green" }
@@ -57,7 +59,7 @@ $presales = Login "neha@dctcrm.com" "password123"
 Log "Logged in as: $($presales.data.user.firstName) $($presales.data.user.lastName) [$($presales.data.profile.name)]" "Yellow"
 
 # Create a lead as presales
-$pl1 = AuthPost $presales.session "/api/leads" @{firstName="Presales"; lastName="Test Lead"; company="PresalesCorp"; source="WEBSITE"}
+$pl1 = AuthPost $presales.session "/api/leads" @{firstName="Presales"; lastName="Test Lead"; company="PresalesCorp"; source="WEBSITE"; phone=(New-TestPhone 1)}
 Log "Created lead: $($pl1.data.leadNumber)" "Gray"
 Pass "Lead Number auto-generated"
 
@@ -214,9 +216,9 @@ Log "SECTION 5: LEAD NUMBER COMPREHENSIVE" "Cyan"
 Log "========================================" "Cyan"
 
 # Create 3 leads and verify sequential
-$l1 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 1"; company="SeqCorp"; source="WEBSITE"}
-$l2 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 2"; company="SeqCorp"; source="WEBSITE"}
-$l3 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 3"; company="SeqCorp"; source="WEBSITE"}
+$l1 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 1"; company="SeqCorp"; source="WEBSITE"; phone=(New-TestPhone 2)}
+$l2 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 2"; company="SeqCorp"; source="WEBSITE"; phone=(New-TestPhone 3)}
+$l3 = AuthPost $admin.session "/api/leads" @{firstName="Seq"; lastName="Test 3"; company="SeqCorp"; source="WEBSITE"; phone=(New-TestPhone 4)}
 Log "  $($l1.data.leadNumber) -> $($l2.data.leadNumber) -> $($l3.data.leadNumber)" "Gray"
 Pass "Sequential lead numbers"
 
@@ -319,7 +321,7 @@ Log "SECTION 11: PUSH TO SVC VALIDATION" "Cyan"
 Log "========================================" "Cyan"
 
 # Create a fresh lead for push testing
-$pushLead = AuthPost $admin.session "/api/leads" @{firstName="Push"; lastName="Test"; company="PushCorp"; source="WEBSITE"}
+$pushLead = AuthPost $admin.session "/api/leads" @{firstName="Push"; lastName="Test"; company="PushCorp"; source="WEBSITE"; phone=(New-TestPhone 5)}
 AuthPutRaw $admin.session "/api/leads/$($pushLead.data.id)/status" '{"status":"INCOMING","note":"Moving to incoming"}'
 
 ShouldFailRaw $admin.session "POST" "/api/leads/$($pushLead.data.id)/push-to-svc" '{}' "Push without reason rejected"

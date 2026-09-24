@@ -1,15 +1,27 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useRouter } from "next/navigation";
+
 import { cn } from "@/lib/utils";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { useToast } from "@/hooks/use-toast";
+
 import {
   User,
   Phone,
@@ -92,7 +104,7 @@ export function LeadDetail({ lead, isLoading }: LeadDetailProps) {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => toast({ title: "Edit", description: "Edit lead form coming soon" })}>Edit</Button>
-          <Button onClick={() => toast({ title: "Convert", description: "Lead conversion coming soon" })}>Convert to Customer</Button>
+          <Button onClick={() => toast({ title: "Convert", description: "Lead conversion coming soon" })}>Convert Lead</Button>
         </div>
       </div>
 
@@ -204,7 +216,7 @@ export function LeadDetail({ lead, isLoading }: LeadDetailProps) {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(lead.createdAt).toLocaleDateString()}
+                      {formatDate(lead.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -213,7 +225,7 @@ export function LeadDetail({ lead, isLoading }: LeadDetailProps) {
                   <div>
                     <p className="text-sm font-medium">Last Updated</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(lead.updatedAt).toLocaleDateString()}
+                      {formatDate(lead.updatedAt)}
                     </p>
                   </div>
                 </div>

@@ -1,16 +1,31 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import { cn } from "@/lib/utils";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import Link from "next/link";
+
 import { useToast } from "@/hooks/use-toast";
+
+import { opportunityApi } from "@/lib/api";
+
 import {
   ArrowLeft,
   Edit,
@@ -32,30 +47,12 @@ interface OpportunityData {
   stage: string;
   probability: number;
   closeDate: string;
-  accountName: string;
-  accountId: string;
   assignedTo: string;
   description?: string;
   createdAt: string;
   updatedAt: string;
   currency?: string;
 }
-
-const mockOpportunity: OpportunityData = {
-  id: "1",
-  title: "Premium Tower Project",
-  value: 25000000,
-  stage: "negotiation",
-  probability: 75,
-  closeDate: "2024-03-31T00:00:00Z",
-  accountName: "ABC Corporation",
-  accountId: "1",
-  assignedTo: "Rajesh Kumar",
-  description: "Premium residential tower project with 200+ units. Client is interested in phases 1 and 2.",
-  createdAt: "2024-01-10T09:00:00Z",
-  updatedAt: "2024-01-15T14:30:00Z",
-  currency: "INR",
-};
 
 const stageColors: Record<string, string> = {
   prospecting: "bg-blue-100 text-blue-800",
@@ -76,6 +73,24 @@ const formatCurrency = (value: number) => {
 
 const stages = ["prospecting", "qualification", "proposal", "negotiation", "closed-won"];
 
+function mapOpportunity(item: any): OpportunityData {
+  return {
+    id: item.id,
+    title: item.name || "Untitled Opportunity",
+    value: item.amount || 0,
+    stage: (item.stage || "prospecting").toLowerCase().replace(/_/g, "-"),
+    probability: item.probability ?? 0,
+    closeDate: item.expectedCloseDate || item.closeDate || item.createdAt,
+    assignedTo: item.owner
+      ? `${item.owner.firstName} ${item.owner.lastName}`.trim()
+      : "—",
+    description: item.description,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    currency: "INR",
+  };
+}
+
 export default function OpportunityDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -84,11 +99,24 @@ export default function OpportunityDetailPage() {
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    setTimeout(() => {
-      setOpportunity(mockOpportunity);
-      setIsLoading(false);
-    }, 500);
-  }, [params.id]);
+    const fetchOpportunity = async () => {
+      try {
+        setIsLoading(true);
+        const res = await opportunityApi.get(params.id as string);
+        if (res.data.success && res.data.data) {
+          setOpportunity(mapOpportunity(res.data.data));
+        } else {
+          toast({ title: "Error", description: "Opportunity not found", variant: "destructive" as any });
+          router.push("/opportunities");
+        }
+      } catch {
+        toast({ title: "Error", description: "Failed to load opportunity", variant: "destructive" as any });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchOpportunity();
+  }, [params.id, router, toast]);
 
   if (isLoading) {
     return (
@@ -126,11 +154,7 @@ export default function OpportunityDetailPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{opportunity.title}</h1>
-            <p className="text-muted-foreground">
-              <Link href={`/accounts/${opportunity.accountId}`} className="hover:underline">
-                {opportunity.accountName}
-              </Link>
-            </p>
+            <p className="text-muted-foreground">{opportunity.assignedTo}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -196,11 +220,7 @@ export default function OpportunityDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Close Date</p>
                 <p className="text-lg font-bold">
-                  {new Date(opportunity.closeDate).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
+                  {formatDate(opportunity.closeDate)}
                 </p>
               </div>
             </div>
@@ -275,12 +295,6 @@ export default function OpportunityDetailPage() {
                   <span className="text-sm font-medium">{opportunity.title}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Account</span>
-                  <Link href={`/accounts/${opportunity.accountId}`} className="text-sm font-medium hover:underline">
-                    {opportunity.accountName}
-                  </Link>
-                </div>
-                <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Value</span>
                   <span className="text-sm font-medium">{formatCurrency(opportunity.value)}</span>
                 </div>
@@ -304,7 +318,7 @@ export default function OpportunityDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(opportunity.createdAt).toLocaleDateString()}
+                      {formatDate(opportunity.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -313,7 +327,7 @@ export default function OpportunityDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Expected Close</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(opportunity.closeDate).toLocaleDateString()}
+                      {formatDate(opportunity.closeDate)}
                     </p>
                   </div>
                 </div>

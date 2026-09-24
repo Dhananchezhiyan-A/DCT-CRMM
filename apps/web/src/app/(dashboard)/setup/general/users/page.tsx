@@ -2917,22 +2917,22 @@ export default function UsersPage() {
                             permission
                           ) => {
 
-                            const module =
+                            const permissionModule =
                               permission.module ||
                               "General";
 
                             if (
                               !result[
-                                module
+                                permissionModule
                               ]
                             ) {
                               result[
-                                module
+                                permissionModule
                               ] = [];
                             }
 
                             result[
-                              module
+                              permissionModule
                             ].push(
                               permission
                             );

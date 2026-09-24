@@ -89,7 +89,7 @@ async function main() {
     },
   });
 
-  const crmObjects = ['Lead', 'Contact', 'Account', 'Customer', 'SiteVisit', 'Opportunity', 'Quotation', 'Booking', 'Payment', 'Project', 'Unit', 'Task', 'FollowUp', 'Activity', 'Report', 'Dashboard', 'User', 'Role', 'AuditLog', 'Notification'];
+  const crmObjects = ['Lead', 'SiteVisit', 'Opportunity', 'Quotation', 'Booking', 'Payment', 'Project', 'Unit', 'Task', 'FollowUp', 'Activity', 'Report', 'Dashboard', 'User', 'Role', 'AuditLog', 'Notification'];
 
   for (const obj of crmObjects) {
     const permSet = await prisma.permissionSet.create({
@@ -296,7 +296,7 @@ async function main() {
     }
   }
 
-  const leadStatuses = [LeadStatus.NEW, LeadStatus.INCOMING, LeadStatus.PROSPECT, LeadStatus.SITE_VISIT_SCHEDULED, LeadStatus.SITE_VISIT_HAPPENED, LeadStatus.SALES, LeadStatus.OPPORTUNITY, LeadStatus.LOST, LeadStatus.BOOKED];
+  const leadStatuses = [LeadStatus.NEW, LeadStatus.INCOMING, LeadStatus.PROSPECT, LeadStatus.SITE_VISIT_SCHEDULED, LeadStatus.SITE_VISIT_HAPPENED, LeadStatus.LOST, LeadStatus.BOOKED];
   const leadSources = [LeadSource.WEBSITE, LeadSource.REFERRAL, LeadSource.COLD_CALL, LeadSource.ADVERTISEMENT, LeadSource.WALK_IN, LeadSource.PORTAL, LeadSource.INSTAGRAM];
   const firstNames = ['Vikram', 'Sunita', 'Arjun', 'Kavita', 'Rohit', 'Meera', 'Sanjay', 'Pooja', 'Manoj', 'Anita', 'Deepak', 'Sonia', 'Raj', 'Nisha', 'Vikas', 'Ritu', 'Suresh', 'Geeta', 'Ashok', 'Suman'];
   const lastNames = ['Singh', 'Verma', 'Reddy', 'Iyer', 'Mishra', 'Das', 'Bose', 'Joshi', 'Nair', 'Tiwari', 'Gupta', 'Malhotra', 'Chopra', 'Kapoor', 'Mehta', 'Shah', 'Rao', 'Menon', 'Chatterjee', 'Bhat'];
@@ -329,7 +329,7 @@ async function main() {
       },
     });
 
-    if (status === LeadStatus.SITE_VISIT_SCHEDULED || status === LeadStatus.SITE_VISIT_HAPPENED || status === LeadStatus.OPPORTUNITY || status === LeadStatus.BOOKED) {
+    if (status === LeadStatus.SITE_VISIT_SCHEDULED || status === LeadStatus.SITE_VISIT_HAPPENED || status === LeadStatus.BOOKED) {
       await prisma.siteVisit.create({
         data: {
           tenantId: tenant.id,
@@ -344,7 +344,7 @@ async function main() {
       });
     }
 
-    if (status === LeadStatus.OPPORTUNITY || status === LeadStatus.BOOKED) {
+    if (status === LeadStatus.SITE_VISIT_HAPPENED || status === LeadStatus.BOOKED) {
       const opp = await prisma.opportunity.create({
         data: {
           tenantId: tenant.id,
@@ -432,8 +432,6 @@ async function main() {
 
   const standardObjects = [
     { name: 'Lead', label: 'Lead', pluralLabel: 'Leads', icon: 'user', description: 'Manage sales leads' },
-    { name: 'Contact', label: 'Contact', pluralLabel: 'Contacts', icon: 'contact', description: 'Manage contacts' },
-    { name: 'Account', label: 'Account', pluralLabel: 'Accounts', icon: 'building', description: 'Manage accounts' },
     { name: 'Opportunity', label: 'Opportunity', pluralLabel: 'Opportunities', icon: 'trending-up', description: 'Sales pipeline' },
     { name: 'SiteVisit', label: 'Site Visit', pluralLabel: 'Site Visits', icon: 'map-pin', description: 'Site visit scheduling' },
     { name: 'Quotation', label: 'Quotation', pluralLabel: 'Quotations', icon: 'file-text', description: 'Quotation management' },
@@ -518,145 +516,7 @@ async function main() {
     });
   }
 
-  // Create a sample custom object: Property
-  const propertyObject = await prisma.objectDefinition.create({
-    data: {
-      tenantId: tenant.id,
-      name: 'Property',
-      label: 'Property',
-      pluralLabel: 'Properties',
-      icon: 'building',
-      objectType: 'custom',
-      description: 'Manage real estate properties',
-      createdBy: adminUser.id,
-      updatedBy: adminUser.id,
-    },
-  });
-
-  // Add fields to Property
-  const propertyFields = [
-    { name: 'property_name', label: 'Property Name', fieldType: 'text', required: true, searchable: true, sortable: true, filterable: true, displayOrder: 7 },
-    { name: 'address', label: 'Address', fieldType: 'longText', searchable: true, displayOrder: 8 },
-    { name: 'city', label: 'City', fieldType: 'text', searchable: true, sortable: true, filterable: true, displayOrder: 9 },
-    { name: 'price', label: 'Price', fieldType: 'currency', sortable: true, filterable: true, displayOrder: 10 },
-    { name: 'status', label: 'Status', fieldType: 'picklist', filterable: true, displayOrder: 11 },
-    { name: 'property_type', label: 'Property Type', fieldType: 'picklist', filterable: true, displayOrder: 12 },
-    { name: 'bedrooms', label: 'Bedrooms', fieldType: 'number', sortable: true, displayOrder: 13 },
-    { name: 'bathrooms', label: 'Bathrooms', fieldType: 'number', sortable: true, displayOrder: 14 },
-    { name: 'area_sqft', label: 'Area (sq ft)', fieldType: 'number', sortable: true, displayOrder: 15 },
-    { name: 'description', label: 'Description', fieldType: 'longText', displayOrder: 16 },
-  ];
-
-  const createdFields: Record<string, any> = {};
-  for (const f of propertyFields) {
-    const field = await prisma.fieldDefinition.create({
-      data: {
-        tenantId: tenant.id,
-        objectId: propertyObject.id,
-        ...f,
-        createdBy: adminUser.id,
-      },
-    });
-    createdFields[f.name] = field;
-  }
-
-  // Add picklist values for Status
-  const statusField = createdFields['status'];
-  const statusValues = ['Available', 'Sold', 'Reserved', 'Under Construction'];
-  for (let i = 0; i < statusValues.length; i++) {
-    await prisma.picklistValue.create({
-      data: {
-        tenantId: tenant.id,
-        fieldId: statusField.id,
-        label: statusValues[i],
-        value: statusValues[i].toUpperCase().replace(/\s+/g, '_'),
-        isDefault: i === 0,
-        displayOrder: i,
-      },
-    });
-  }
-
-  // Add picklist values for Property Type
-  const typeField = createdFields['property_type'];
-  const typeValues = ['Apartment', 'Villa', 'Plot', 'Commercial', 'Office'];
-  for (let i = 0; i < typeValues.length; i++) {
-    await prisma.picklistValue.create({
-      data: {
-        tenantId: tenant.id,
-        fieldId: typeField.id,
-        label: typeValues[i],
-        value: typeValues[i].toUpperCase().replace(/\s+/g, '_'),
-        isDefault: i === 0,
-        displayOrder: i,
-      },
-    });
-  }
-
-  // Create layout for Property
-  await prisma.pageLayout.create({
-    data: {
-      tenantId: tenant.id,
-      objectId: propertyObject.id,
-      name: 'Default Layout',
-      isDefault: true,
-      sections: JSON.stringify([
-        { name: 'Property Information', fields: ['property_name', 'address', 'city', 'price'] },
-        { name: 'Details', fields: ['status', 'property_type', 'bedrooms', 'bathrooms', 'area_sqft'] },
-        { name: 'Description', fields: ['description'] },
-      ]),
-      createdBy: adminUser.id,
-    },
-  });
-
-  // Create permissions for Property
-  await prisma.objectPermission.create({
-    data: {
-      tenantId: tenant.id,
-      roleId: adminRole.id,
-      objectId: propertyObject.id,
-      canCreate: true, canRead: true, canUpdate: true, canDelete: true, viewAll: true, modifyAll: true,
-    },
-  });
-  await prisma.objectPermission.create({
-    data: {
-      tenantId: tenant.id,
-      roleId: salesManagerRole.id,
-      objectId: propertyObject.id,
-      canCreate: true, canRead: true, canUpdate: true, canDelete: false, viewAll: true, modifyAll: false,
-    },
-  });
-  await prisma.objectPermission.create({
-    data: {
-      tenantId: tenant.id,
-      roleId: salesExecRole.id,
-      objectId: propertyObject.id,
-      canCreate: true, canRead: true, canUpdate: true, canDelete: false, viewAll: false, modifyAll: false,
-    },
-  });
-
-  // Create sample records for Property
-  const sampleProperties = [
-    { property_name: 'DCT Heights - Unit 101', address: '123 MG Road, Andheri West', city: 'Mumbai', price: 15000000, status: 'AVAILABLE', property_type: 'APARTMENT', bedrooms: 3, bathrooms: 2, area_sqft: 1200, description: 'Premium 3BHK apartment with city view' },
-    { property_name: 'DCT Valley - Villa 5', address: '456 Park Street, Hinjewadi', city: 'Pune', price: 25000000, status: 'AVAILABLE', property_type: 'VILLA', bedrooms: 4, bathrooms: 3, area_sqft: 2500, description: 'Luxury villa with garden' },
-    { property_name: 'DCT Paradise - Unit 202', address: '789 Lake Road, Whitefield', city: 'Bangalore', price: 12000000, status: 'SOLD', property_type: 'APARTMENT', bedrooms: 2, bathrooms: 2, area_sqft: 950, description: '2BHK apartment near tech park' },
-  ];
-
-  for (const prop of sampleProperties) {
-    await prisma.customRecord.create({
-      data: {
-        tenantId: tenant.id,
-        objectId: propertyObject.id,
-        recordNumber: `PR-${String(sampleProperties.indexOf(prop) + 1).padStart(5, '0')}`,
-        ownerId: adminUser.id,
-        data: prop,
-        createdBy: adminUser.id,
-      },
-    });
-  }
-
   console.log(`Created ${standardObjects.length} standard object definitions`);
-  console.log(`Created custom object: Property with ${propertyFields.length} fields`);
-  console.log(`Created ${sampleProperties.length} sample property records`);
 
   console.log('Seed completed successfully!');
   console.log(`Tenant: ${tenant.name} (${tenant.slug})`);

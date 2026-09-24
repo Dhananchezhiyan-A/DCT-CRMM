@@ -3,7 +3,6 @@ import { prisma } from '@dct-crm/db';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/permissions';
-import { EffectivePermissionService } from '../services/effectivePermissions';
 
 const router = Router();
 router.use(authenticate);

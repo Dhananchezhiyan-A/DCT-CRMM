@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '@dct-crm/db';
-import { leadSchema } from '@dct-crm/shared';
+import { leadSchema, normalizePhone, PHONE_DUPLICATE_ERROR } from '@dct-crm/shared';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize } from '../middleware/authorization';
 import { canTransitionStatus, getAllowedStatuses, isValidStatus } from '../services/workflow';
@@ -23,6 +23,68 @@ async function getNextLeadNumber(tenantId: string): Promise<string> {
   return `LN${String(sequence.nextValue).padStart(6, '0')}`;
 }
 
+async function findPhoneConflict(
+  tenantId: string,
+  phone: string,
+  excludeLeadId?: string,
+): Promise<boolean> {
+  const normalized = normalizePhone(phone);
+  const candidates = await prisma.lead.findMany({
+    where: {
+      tenantId,
+      phone: { not: null },
+      ...(excludeLeadId ? { id: { not: excludeLeadId } } : {}),
+    },
+    select: { id: true, phone: true },
+  });
+  return candidates.some(
+    (lead) => lead.phone != null && normalizePhone(lead.phone) === normalized,
+  );
+}
+
+function isPhoneUniqueViolation(error: any): boolean {
+  if (error?.code !== 'P2002') return false;
+  const target = error?.meta?.target;
+  if (Array.isArray(target)) return target.includes('phone');
+  if (typeof target === 'string') return target.includes('phone');
+  return false;
+}
+
+const LEAD_DIFFABLE_FIELDS = [
+  'firstName', 'lastName', 'salutation', 'title', 'email', 'phone', 'mobile',
+  'website', 'company', 'industry', 'annualRevenue', 'numberOfEmployees',
+  'source', 'status', 'rating', 'description', 'street', 'city',
+  'stateProvince', 'country', 'postalCode', 'score', 'budget',
+  'requirements', 'notes', 'ownerId', 'projectId',
+] as const;
+
+function normalizeDiffValue(value: any): any {
+  if (value === undefined) return null;
+  if (value === '') return null;
+  return value;
+}
+
+function computeLeadDiff(
+  existing: Record<string, any>,
+  incoming: Record<string, any>,
+): { oldValues: Record<string, any>; newValues: Record<string, any>; updateData: Record<string, any> } {
+  const oldValues: Record<string, any> = {};
+  const newValues: Record<string, any> = {};
+  const updateData: Record<string, any> = {};
+
+  for (const field of LEAD_DIFFABLE_FIELDS) {
+    if (!(field in incoming)) continue;
+    const incomingValue = normalizeDiffValue((incoming as Record<string, any>)[field]);
+    const existingValue = normalizeDiffValue(existing[field]);
+    if (incomingValue === existingValue) continue;
+    oldValues[field] = existingValue;
+    newValues[field] = incomingValue;
+    updateData[field] = (incoming as Record<string, any>)[field] === '' ? null : (incoming as Record<string, any>)[field];
+  }
+
+  return { oldValues, newValues, updateData };
+}
+
 router.get('/', authorize('Lead', 'read'), async (req: AuthRequest, res: Response) => {
   try {
     const { page = 1, limit = 20, status, source, ownerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
@@ -36,15 +98,22 @@ router.get('/', authorize('Lead', 'read'), async (req: AuthRequest, res: Respons
     if (source) where.source = source;
     if (ownerId) where.ownerId = ownerId;
     if (search) {
-      where.OR = [
-        { leadNumber: { contains: search as string, mode: 'insensitive' } },
-        { firstName: { contains: search as string, mode: 'insensitive' } },
-        { lastName: { contains: search as string, mode: 'insensitive' } },
-        { email: { contains: search as string, mode: 'insensitive' } },
-        { phone: { contains: search as string } },
-        { company: { contains: search as string, mode: 'insensitive' } },
-        { title: { contains: search as string, mode: 'insensitive' } },
+      const searchTerm = search as string;
+      const words = searchTerm.trim().split(/\s+/).filter(Boolean);
+      const matchWord = (word: string) => [
+        { leadNumber: { contains: word, mode: 'insensitive' as const } },
+        { firstName: { contains: word, mode: 'insensitive' as const } },
+        { lastName: { contains: word, mode: 'insensitive' as const } },
+        { email: { contains: word, mode: 'insensitive' as const } },
+        { phone: { contains: word } },
+        { company: { contains: word, mode: 'insensitive' as const } },
+        { title: { contains: word, mode: 'insensitive' as const } },
       ];
+      if (words.length > 1) {
+        where.AND = words.map((word) => ({ OR: matchWord(word) }));
+      } else {
+        where.OR = matchWord(searchTerm);
+      }
     }
 
     const profileName = req.user!.profileName || 'Admin';
@@ -122,6 +191,9 @@ router.get('/:id', authorize('Lead', 'read'), async (req: AuthRequest, res: Resp
         auditLogs: {
           orderBy: { createdAt: 'desc' },
           take: 20,
+          include: {
+            user: { select: { id: true, firstName: true, lastName: true, email: true } },
+          },
         },
       },
     });
@@ -132,7 +204,32 @@ router.get('/:id', authorize('Lead', 'read'), async (req: AuthRequest, res: Resp
 
     const ownerHistory = await getOwnerHistory(req.tenantId!, req.params.id);
 
-    res.json({ success: true, data: { ...lead, ownerHistory } });
+    const lastAudit = await prisma.auditLog.findFirst({
+      where: {
+        tenantId: req.tenantId!,
+        OR: [{ leadId: lead.id }, { objectType: 'Lead', objectId: lead.id }],
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+
+    const lastModified = lastAudit
+      ? {
+          by: lastAudit.user,
+          at: lastAudit.createdAt,
+          action: lastAudit.action,
+        }
+      : {
+          by: lead.creator
+            ? { id: lead.creator.id, firstName: lead.creator.firstName, lastName: lead.creator.lastName, email: null }
+            : null,
+          at: lead.updatedAt,
+          action: 'CREATE',
+        };
+
+    res.json({ success: true, data: { ...lead, ownerHistory, lastModified } });
   } catch (error) {
     console.error('Get lead error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch lead' });
@@ -143,6 +240,10 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
   try {
     const data = leadSchema.parse(req.body);
 
+    if (await findPhoneConflict(req.tenantId!, data.phone)) {
+      return res.status(409).json({ success: false, error: PHONE_DUPLICATE_ERROR });
+    }
+
     const leadNumber = await getNextLeadNumber(req.tenantId!);
 
     let ownerId = data.ownerId || req.user!.id;
@@ -152,7 +253,8 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
         if (presalesUser) {
           ownerId = presalesUser.id;
         }
-      } catch {
+      } catch (error) {
+        console.error('Failed to assign default presales owner:', error);
       }
     }
 
@@ -166,7 +268,7 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
         salutation: data.salutation || undefined,
         title: data.title || undefined,
         email: data.email || undefined,
-        phone: data.phone || undefined,
+        phone: normalizePhone(data.phone),
         mobile: data.mobile || undefined,
         website: data.website || undefined,
         company: data.company,
@@ -223,6 +325,9 @@ router.post('/', authorize('Lead', 'create'), async (req: AuthRequest, res: Resp
     if (error.name === 'ZodError') {
       return res.status(400).json({ success: false, error: error.errors[0].message });
     }
+    if (isPhoneUniqueViolation(error)) {
+      return res.status(409).json({ success: false, error: PHONE_DUPLICATE_ERROR });
+    }
     console.error('Create lead error:', error);
     res.status(500).json({ success: false, error: 'Failed to create lead' });
   }
@@ -238,11 +343,25 @@ router.put('/:id', authorize('Lead', 'edit'), async (req: AuthRequest, res: Resp
       return res.status(404).json({ success: false, error: 'Lead not found' });
     }
 
-    const { leadNumber: _ignored, ...bodyData } = req.body;
+    const bodyData = { ...req.body };
+    delete bodyData.leadNumber;
+    const reason =
+      typeof bodyData.reason === 'string' && bodyData.reason.trim()
+        ? bodyData.reason.trim()
+        : undefined;
+    delete bodyData.reason;
     const data = leadSchema.partial().parse(bodyData);
 
     if (data.status && !isValidStatus(data.status)) {
       return res.status(400).json({ success: false, error: `Invalid status: ${data.status}` });
+    }
+
+    if (data.phone !== undefined && data.phone !== '') {
+      const phoneToCheck = normalizePhone(data.phone);
+      if (await findPhoneConflict(req.tenantId!, phoneToCheck, req.params.id)) {
+        return res.status(409).json({ success: false, error: PHONE_DUPLICATE_ERROR });
+      }
+      data.phone = phoneToCheck;
     }
 
     if (data.status) {
@@ -258,58 +377,81 @@ router.put('/:id', authorize('Lead', 'edit'), async (req: AuthRequest, res: Resp
       }
     }
 
-    const lead = await prisma.lead.update({
-      where: { id: req.params.id },
-      data: {
-        firstName: data.firstName || undefined,
-        lastName: data.lastName || undefined,
-        salutation: data.salutation || undefined,
-        title: data.title || undefined,
-        email: data.email || undefined,
-        phone: data.phone || undefined,
-        mobile: data.mobile || undefined,
-        website: data.website || undefined,
-        company: data.company || undefined,
-        industry: data.industry || undefined,
-        annualRevenue: data.annualRevenue || undefined,
-        numberOfEmployees: data.numberOfEmployees || undefined,
-        source: data.source || undefined,
-        status: data.status || undefined,
-        rating: data.rating || undefined,
-        description: data.description || undefined,
-        street: data.street || undefined,
-        city: data.city || undefined,
-        stateProvince: data.stateProvince || undefined,
-        country: data.country || undefined,
-        postalCode: data.postalCode || undefined,
-        score: data.score || undefined,
-        budget: data.budget || undefined,
-        ownerId: data.ownerId || undefined,
-        projectId: data.projectId || undefined,
-      },
-      include: {
-        owner: { select: { id: true, firstName: true, lastName: true } },
-        project: { select: { id: true, name: true } },
-      },
+    const { oldValues, newValues, updateData } = computeLeadDiff(existingLead, data);
+
+    if (Object.keys(updateData).length === 0) {
+      const unchanged = await prisma.lead.findFirst({
+        where: { id: req.params.id, tenantId: req.tenantId! },
+        include: {
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          project: { select: { id: true, name: true } },
+        },
+      });
+      return res.json({ success: true, data: unchanged, unchanged: true });
+    }
+
+    const ownerChanged =
+      'ownerId' in updateData &&
+      normalizeDiffValue(updateData.ownerId) !== normalizeDiffValue(existingLead.ownerId);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.update({
+        where: { id: req.params.id },
+        data: updateData,
+        include: {
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          project: { select: { id: true, name: true } },
+        },
+      });
+
+      const auditNewValues = reason ? { ...newValues, reason } : newValues;
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.tenantId!,
+          userId: req.user!.id,
+          leadId: lead.id,
+          action: ownerChanged && Object.keys(newValues).length === 1 ? 'OWNER_CHANGED' : 'UPDATE',
+          objectType: 'Lead',
+          objectId: lead.id,
+          oldValues,
+          newValues: auditNewValues,
+        },
+      });
+
+      if (ownerChanged) {
+        const newOwnerId = normalizeDiffValue(updateData.ownerId);
+        const newOwner = newOwnerId
+          ? await tx.user.findUnique({
+              where: { id: newOwnerId },
+              select: { id: true, firstName: true, lastName: true, profile: { select: { name: true } } },
+            })
+          : null;
+
+        await createOwnerHistory({
+          tenantId: req.tenantId!,
+          leadId: lead.id,
+          previousOwnerId: existingLead.ownerId,
+          newOwnerId: newOwnerId as string | null,
+          previousProfile: null,
+          newProfile: newOwner?.profile?.name || null,
+          previousStatus: existingLead.status,
+          newStatus: lead.status,
+          handoffReason: reason || 'Owner changed via lead update',
+          changedById: req.user!.id,
+        });
+      }
+
+      return lead;
     });
 
-    await prisma.auditLog.create({
-      data: {
-        tenantId: req.tenantId!,
-        userId: req.user!.id,
-        leadId: lead.id,
-        action: 'UPDATE',
-        objectType: 'Lead',
-        objectId: lead.id,
-        oldValues: existingLead,
-        newValues: data,
-      },
-    });
-
-    res.json({ success: true, data: lead });
+    res.json({ success: true, data: result });
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return res.status(400).json({ success: false, error: error.errors[0].message });
+    }
+    if (isPhoneUniqueViolation(error)) {
+      return res.status(409).json({ success: false, error: PHONE_DUPLICATE_ERROR });
     }
     console.error('Update lead error:', error);
     res.status(500).json({ success: false, error: 'Failed to update lead' });
@@ -332,9 +474,10 @@ router.delete('/:id', authorize('Lead', 'delete'), async (req: AuthRequest, res:
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: lead.id,
         action: 'DELETE',
         objectType: 'Lead',
-        objectId: req.params.id,
+        objectId: lead.id,
         oldValues: lead,
       },
     });
@@ -421,9 +564,24 @@ router.post('/:id/push-to-svc', authorize('Lead', 'edit'), async (req: AuthReque
           objectType: 'Lead',
           objectId: lead.id,
           oldValues: { status: 'INCOMING', ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
-          newValues: { status: 'PROSPECT', ownerId: svcUser.id, ownerName: `${svcUser.firstName} ${svcUser.lastName}`, note: reason },
+          newValues: { status: 'PROSPECT', ownerId: svcUser.id, ownerName: `${svcUser.firstName} ${svcUser.lastName}`, note: reason, reason },
         },
       });
+
+      if (lead.ownerId !== svcUser.id) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.tenantId!,
+            userId: req.user!.id,
+            leadId: lead.id,
+            action: 'OWNER_CHANGED',
+            objectType: 'Lead',
+            objectId: lead.id,
+            oldValues: { ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
+            newValues: { ownerId: svcUser.id, ownerName: `${svcUser.firstName} ${svcUser.lastName}`, reason },
+          },
+        });
+      }
 
       await tx.notification.create({
         data: {
@@ -504,7 +662,7 @@ router.post('/:id/move-to-recovery', authorize('Lead', 'edit'), async (req: Auth
           objectType: 'Lead',
           objectId: lead.id,
           oldValues: { status: lead.status, ownerId: lead.ownerId },
-          newValues: { status: 'LOST', recoveryReason, recoveryNote: note },
+          newValues: { status: 'LOST', recoveryReason, recoveryNote: note, reason: recoveryReason },
         },
       });
 
@@ -615,9 +773,24 @@ router.post('/:id/schedule-site-visit', authorize('Lead', 'edit'), async (req: A
           objectType: 'Lead',
           objectId: lead.id,
           oldValues: { status: 'PROSPECT', ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
-          newValues: { status: 'SITE_VISIT_SCHEDULED', ownerId: salesUser.id, ownerName: `${salesUser.firstName} ${salesUser.lastName}`, siteVisitId: siteVisit.id, note: notes },
+          newValues: { status: 'SITE_VISIT_SCHEDULED', ownerId: salesUser.id, ownerName: `${salesUser.firstName} ${salesUser.lastName}`, siteVisitId: siteVisit.id, note: notes, reason: notes },
         },
       });
+
+      if (lead.ownerId !== salesUser.id) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.tenantId!,
+            userId: req.user!.id,
+            leadId: lead.id,
+            action: 'OWNER_CHANGED',
+            objectType: 'Lead',
+            objectId: lead.id,
+            oldValues: { ownerId: lead.ownerId, ownerName: previousOwner ? `${previousOwner.firstName} ${previousOwner.lastName}` : null },
+            newValues: { ownerId: salesUser.id, ownerName: `${salesUser.firstName} ${salesUser.lastName}`, reason: notes },
+          },
+        });
+      }
 
       await tx.notification.create({
         data: {
@@ -690,7 +863,7 @@ router.put('/:id/status', authorize('Lead', 'edit'), async (req: AuthRequest, re
         objectType: 'Lead',
         objectId: lead.id,
         oldValues: { status: lead.status },
-        newValues: { status, note },
+        newValues: { status, note, reason: note },
       },
     });
 
@@ -749,16 +922,21 @@ router.put('/:id/assign', authorize('Lead', 'edit'), async (req: AuthRequest, re
       changedById: req.user!.id,
     });
 
+    const assignReason =
+      typeof req.body.reason === 'string' && req.body.reason.trim()
+        ? req.body.reason.trim()
+        : 'Manual Assignment';
+
     await prisma.auditLog.create({
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
         leadId: lead.id,
-        action: 'ASSIGN',
+        action: 'OWNER_CHANGED',
         objectType: 'Lead',
         objectId: lead.id,
         oldValues: { ownerId: lead.ownerId, ownerName: lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : null },
-        newValues: { ownerId, ownerName: newOwner ? `${newOwner.firstName} ${newOwner.lastName}` : null },
+        newValues: { ownerId, ownerName: newOwner ? `${newOwner.firstName} ${newOwner.lastName}` : null, reason: assignReason },
       },
     });
 
@@ -784,6 +962,55 @@ router.get('/:id/owner-history', authorize('Lead', 'read'), async (req: AuthRequ
   } catch (error) {
     console.error('Get owner history error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch owner history' });
+  }
+});
+
+router.get('/:id/audit-history', authorize('Lead', 'read'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { page = 1, limit = 20, action } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const lead = await prisma.lead.findFirst({
+      where: { id: req.params.id, tenantId: req.tenantId! },
+      select: { id: true },
+    });
+
+    if (!lead) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+
+    const where: any = {
+      tenantId: req.tenantId!,
+      OR: [{ leadId: lead.id }, { objectType: 'Lead', objectId: lead.id }],
+    };
+    if (action) where.action = action;
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (error) {
+    console.error('Get lead audit history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch lead audit history' });
   }
 });
 

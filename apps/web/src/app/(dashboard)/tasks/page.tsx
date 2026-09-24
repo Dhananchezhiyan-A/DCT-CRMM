@@ -27,7 +27,7 @@ interface Task {
   status: "pending" | "in-progress" | "completed" | "cancelled";
   assignedTo: string;
   relatedTo?: string;
-  relatedType?: "lead" | "opportunity" | "customer";
+  relatedType?: "lead" | "opportunity";
   completedAt?: string;
 }
 

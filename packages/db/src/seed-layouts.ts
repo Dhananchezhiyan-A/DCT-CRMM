@@ -10,7 +10,7 @@ interface Section {
 const LEAD_LAYOUT_SECTIONS: Section[] = [
   {
     name: 'Contact Information',
-    fields: ['salutation', 'firstName', 'lastName', 'title', 'email', 'phone', 'mobile', 'website'],
+    fields: ['salutation', 'firstName', 'lastName', 'title', 'email', 'phone', 'mobile'],
   },
   {
     name: 'Company Information',
@@ -18,7 +18,7 @@ const LEAD_LAYOUT_SECTIONS: Section[] = [
   },
   {
     name: 'Lead Details',
-    fields: ['leadSource', 'leadStatus', 'rating', 'description', 'score'],
+    fields: ['source', 'status', 'rating', 'description'],
   },
   {
     name: 'Address',

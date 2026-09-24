@@ -1,13 +1,23 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useRouter } from "next/navigation";
+
 import { useAuth } from "@/contexts/auth-context";
+
 import { companyApi } from "@/lib/api";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent } from "@/components/ui/card";
+
 import { Badge } from "@/components/ui/badge";
+
 import { useToast } from "@/hooks/use-toast";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
 import {
   Plus,
   Eye,
@@ -278,7 +289,7 @@ export default function CompaniesPage() {
                   </td>
                   <td className="px-4 py-3">{company._count?.users || 0}</td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(company.createdAt).toLocaleDateString()}
+                    {formatDate(company.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

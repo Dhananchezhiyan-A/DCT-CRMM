@@ -35,7 +35,7 @@ export function Chatbot() {
   const [messages, setMessages] = React.useState<Message[]>([
     {
       id: "welcome",
-      content: "Hello! I'm your DCT AI Assistant. You can ask me about leads, sales, bookings, payments, customers, projects, reports and dashboards.",
+        content: "Hello! I'm your DCT AI Assistant. You can ask me about leads, opportunities, site visits, quotations, bookings, payments, projects, reports and dashboards.",
       sender: "bot",
       timestamp: new Date(),
     },
@@ -120,7 +120,7 @@ export function Chatbot() {
     setMessages([
       {
         id: "welcome",
-        content: "Hello! I'm your DCT AI Assistant. You can ask me about leads, sales, bookings, payments, customers, projects, reports and dashboards.",
+        content: "Hello! I'm your DCT AI Assistant. You can ask me about leads, opportunities, site visits, quotations, bookings, payments, projects, reports and dashboards.",
         sender: "bot",
         timestamp: new Date(),
       },

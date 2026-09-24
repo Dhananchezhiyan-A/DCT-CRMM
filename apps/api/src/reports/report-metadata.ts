@@ -1,3 +1,5 @@
+import { prisma } from '@dct-crm/db';
+
 export type ReportFieldType = 'string' | 'number' | 'date' | 'enum';
 
 export interface ReportField {
@@ -13,6 +15,104 @@ export interface ReportObject {
   fields: Record<string, ReportField>;
 }
 
+export interface ReportMetadataField {
+  key: string;
+  label: string;
+  type: ReportFieldType;
+}
+
+export interface ReportMetadataObject {
+  name: string;
+  label: string;
+  category: string;
+  fields: ReportMetadataField[];
+}
+
+export interface ReportMetadataRegistry {
+  objects: ReportMetadataObject[];
+  name?: string;
+  label?: string;
+  category?: string;
+  fields?: ReportMetadataField[];
+  object?: ReportMetadataObject;
+}
+
+function toMetadataObject(name: string, object: ReportObject): ReportMetadataObject {
+  return {
+    name,
+    label: object.label,
+    category: object.category || object.label,
+    fields: Object.entries(object.fields).map(([key, field]) => ({
+      key,
+      label: field.label,
+      type: field.type,
+    })),
+  };
+}
+
+export async function getReportMetadataRegistry(
+  tenantId: string,
+  objectName?: string,
+): Promise<ReportMetadataRegistry> {
+  const staticObjects = Object.entries(REPORT_OBJECTS).map(([name, object]) =>
+    toMetadataObject(name, object),
+  );
+
+  const definedObjects = await prisma.objectDefinition.findMany({
+    where: { tenantId, isActive: true },
+    include: {
+      fields: {
+        where: { isActive: true, visible: true },
+        orderBy: { displayOrder: 'asc' },
+      },
+    },
+    orderBy: { label: 'asc' },
+  });
+
+  const staticNames = new Set(staticObjects.map((object) => object.name.toLowerCase()));
+  const dynamicObjects = definedObjects
+    .filter((object) => !staticNames.has(object.name.toLowerCase()))
+    .map((object) => ({
+      name: object.name,
+      label: object.pluralLabel || object.label,
+      category: object.pluralLabel || object.label,
+      fields: object.fields.map((field) => ({
+        key: field.name,
+        label: field.label,
+        type: (['number', 'currency', 'decimal'].includes(field.fieldType)
+          ? 'number'
+          : ['date', 'dateTime'].includes(field.fieldType)
+            ? 'date'
+            : field.fieldType === 'picklist'
+              ? 'enum'
+              : 'string') as ReportFieldType,
+      })),
+    }));
+
+  const objects = [...staticObjects, ...dynamicObjects];
+
+  if (!objectName) {
+    return { objects };
+  }
+
+  const matched =
+    objects.find((object) => object.name === objectName) ||
+    objects.find((object) => object.name.toLowerCase() === objectName.toLowerCase());
+
+  if (!matched) {
+    throw new Error(`Unknown report object: ${objectName}`);
+  }
+
+  return {
+    objects,
+    name: matched.name,
+    label: matched.label,
+    category: matched.category,
+    fields: matched.fields,
+    object: matched,
+  };
+}
+
 export const REPORT_OBJECTS: Record<string, ReportObject> = {
   Lead: {
     label: 'Leads',
@@ -20,6 +120,7 @@ export const REPORT_OBJECTS: Record<string, ReportObject> = {
     model: 'lead',
     fields: {
       id: { label: 'Lead ID', path: 'id', type: 'string' },
+      leadNumber: { label: 'Lead Number', path: 'leadNumber', type: 'string' },
       firstName: { label: 'First Name', path: 'firstName', type: 'string' },
       lastName: { label: 'Last Name', path: 'lastName', type: 'string' },
       email: { label: 'Email', path: 'email', type: 'string' },
@@ -34,39 +135,6 @@ export const REPORT_OBJECTS: Record<string, ReportObject> = {
       updatedAt: { label: 'Updated Date', path: 'updatedAt', type: 'date' },
       ownerName: { label: 'Owner', path: 'owner.firstName', type: 'string' },
       projectName: { label: 'Project', path: 'project.name', type: 'string' },
-    },
-  },
-  Contact: {
-    label: 'Contacts',
-    category: 'Contacts',
-    model: 'contact',
-    fields: {
-      id: { label: 'Contact ID', path: 'id', type: 'string' },
-      firstName: { label: 'First Name', path: 'firstName', type: 'string' },
-      lastName: { label: 'Last Name', path: 'lastName', type: 'string' },
-      email: { label: 'Email', path: 'email', type: 'string' },
-      phone: { label: 'Phone', path: 'phone', type: 'string' },
-      title: { label: 'Title', path: 'title', type: 'string' },
-      department: { label: 'Department', path: 'department', type: 'string' },
-      isPrimary: { label: 'Primary Contact', path: 'isPrimary', type: 'enum' },
-      createdAt: { label: 'Created Date', path: 'createdAt', type: 'date' },
-      updatedAt: { label: 'Updated Date', path: 'updatedAt', type: 'date' },
-    },
-  },
-  Account: {
-    label: 'Accounts',
-    category: 'Accounts',
-    model: 'account',
-    fields: {
-      id: { label: 'Account ID', path: 'id', type: 'string' },
-      name: { label: 'Account Name', path: 'name', type: 'string' },
-      industry: { label: 'Industry', path: 'industry', type: 'string' },
-      website: { label: 'Website', path: 'website', type: 'string' },
-      phone: { label: 'Phone', path: 'phone', type: 'string' },
-      email: { label: 'Email', path: 'email', type: 'string' },
-      address: { label: 'Address', path: 'address', type: 'string' },
-      createdAt: { label: 'Created Date', path: 'createdAt', type: 'date' },
-      updatedAt: { label: 'Updated Date', path: 'updatedAt', type: 'date' },
     },
   },
   Opportunity: {

@@ -81,28 +81,28 @@ const roles: Role[] = [
     name: "Admin",
     description: "Full access to all CRM features and settings",
     userCount: 2,
-    permissions: ["leads", "contacts", "accounts", "customers", "opportunities", "quotations", "bookings", "payments", "projects", "tasks", "reports", "admin"],
+    permissions: ["leads", "site-visits", "opportunities", "quotations", "bookings", "payments", "projects", "tasks", "reports", "admin"],
   },
   {
     id: "2",
     name: "Sales Manager",
     description: "Manage sales team and view reports",
     userCount: 3,
-    permissions: ["leads", "contacts", "accounts", "customers", "opportunities", "quotations", "bookings", "reports"],
+    permissions: ["leads", "site-visits", "opportunities", "quotations", "bookings", "reports"],
   },
   {
     id: "3",
     name: "Sales Executive",
     description: "Manage leads and opportunities",
     userCount: 5,
-    permissions: ["leads", "contacts", "opportunities", "quotations", "tasks"],
+    permissions: ["leads", "site-visits", "opportunities", "quotations", "tasks"],
   },
   {
     id: "4",
     name: "Viewer",
     description: "Read-only access to CRM data",
     userCount: 1,
-    permissions: ["leads", "contacts", "accounts", "customers"],
+    permissions: ["leads", "reports"],
   },
 ];
 

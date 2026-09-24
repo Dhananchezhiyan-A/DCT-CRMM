@@ -159,7 +159,7 @@ export default function SiteVisitsPage() {
         <div>
           <h1 className="text-2xl font-bold">Site Visits</h1>
           <p className="text-muted-foreground">
-            Schedule and track property site visits
+            Schedule and track project site visits
           </p>
         </div>
         <Button onClick={() => toast({ title: "Schedule Visit", description: "Schedule visit form coming soon" })}>

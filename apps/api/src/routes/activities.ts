@@ -121,7 +121,8 @@ router.post('/', authorize('Activity', 'create'), async (req: AuthRequest, res: 
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
-        action: 'CREATE',
+        leadId: data.leadId || undefined,
+        action: data.type === 'NOTE' ? 'NOTE_CREATED' : 'CREATE',
         objectType: 'Activity',
         objectId: activity.id,
         newValues: data,
@@ -166,6 +167,7 @@ router.put('/:id', authorize('Activity', 'edit'), async (req: AuthRequest, res: 
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: existingActivity.leadId || undefined,
         action: 'UPDATE',
         objectType: 'Activity',
         objectId: activity.id,
@@ -200,6 +202,7 @@ router.delete('/:id', authorize('Activity', 'delete'), async (req: AuthRequest, 
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: activity.leadId || undefined,
         action: 'DELETE',
         objectType: 'Activity',
         objectId: req.params.id,
@@ -233,6 +236,7 @@ router.put('/:id/complete', authorize('Activity', 'edit'), async (req: AuthReque
       data: {
         tenantId: req.tenantId!,
         userId: req.user!.id,
+        leadId: activity.leadId || undefined,
         action: 'STATUS_CHANGE',
         objectType: 'Activity',
         objectId: activity.id,

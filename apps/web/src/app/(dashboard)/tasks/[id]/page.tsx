@@ -1,16 +1,29 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { followUpApi, ApiResponse } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   ArrowLeft,
   Calendar,
@@ -300,7 +313,7 @@ export default function TaskDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(task.createdAt).toLocaleDateString()}
+                      {formatDate(task.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -310,7 +323,7 @@ export default function TaskDetailPage() {
                     <div>
                       <p className="text-sm font-medium">Due Date</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(task.dueDate).toLocaleDateString()}
+                        {formatDate(task.dueDate)}
                       </p>
                     </div>
                   </div>
@@ -321,7 +334,7 @@ export default function TaskDetailPage() {
                     <div>
                       <p className="text-sm font-medium">Completed</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(task.completedAt).toLocaleDateString()}
+                        {formatDate(task.completedAt)}
                       </p>
                     </div>
                   </div>

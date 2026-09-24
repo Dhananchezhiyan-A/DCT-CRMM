@@ -1,16 +1,29 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/date-format";
+
 import * as React from "react";
+
 import { useParams, useRouter } from "next/navigation";
+
 import Link from "next/link";
+
 import { paymentApi } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
+
 import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   ArrowLeft,
   Calendar,
@@ -27,7 +40,7 @@ import {
 interface PaymentData {
   id: string;
   paymentNumber: string;
-  customerName: string;
+  leadName: string;
   bookingNumber: string;
   amount: number;
   method: string;
@@ -155,7 +168,7 @@ export default function PaymentDetailPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{payment.paymentNumber}</h1>
-            <p className="text-muted-foreground">Payment for {payment.customerName}</p>
+            <p className="text-muted-foreground">Payment for {payment.leadName}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -268,8 +281,8 @@ export default function PaymentDetailPage() {
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Customer</span>
-                  <span className="text-sm font-medium">{payment.customerName}</span>
+                  <span className="text-sm text-muted-foreground">Lead</span>
+                  <span className="text-sm font-medium">{payment.leadName}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Booking</span>
@@ -304,7 +317,7 @@ export default function PaymentDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Payment Date</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(payment.paymentDate).toLocaleDateString()}
+                      {formatDate(payment.paymentDate)}
                     </p>
                   </div>
                 </div>
@@ -313,7 +326,7 @@ export default function PaymentDetailPage() {
                   <div>
                     <p className="text-sm font-medium">Created</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(payment.createdAt).toLocaleDateString()}
+                      {formatDate(payment.createdAt)}
                     </p>
                   </div>
                 </div>

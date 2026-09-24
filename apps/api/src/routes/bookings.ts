@@ -15,7 +15,6 @@ const bookingSchema = z.object({
   quotationId: z.string().optional(),
   projectId: z.string(),
   unitId: z.string(),
-  customerId: z.string().optional(),
   ownerId: z.string().optional(),
   queueId: z.string().optional(),
   number: z.string().optional(),
@@ -33,7 +32,6 @@ router.get('/', authorize('Booking', 'read'), async (req: AuthRequest, res: Resp
     const {
       page = 1,
       limit = 20,
-      customerId,
       unitId,
       projectId,
       status,
@@ -46,7 +44,6 @@ router.get('/', authorize('Booking', 'read'), async (req: AuthRequest, res: Resp
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = { tenantId };
-    if (customerId) where.customerId = customerId;
     if (unitId) where.unitId = unitId;
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
@@ -66,7 +63,6 @@ router.get('/', authorize('Booking', 'read'), async (req: AuthRequest, res: Resp
         include: {
           lead: { select: { id: true, firstName: true, lastName: true } },
           opportunity: { select: { id: true, name: true } },
-          customer: { select: { id: true, firstName: true, lastName: true } },
           unit: { select: { id: true, number: true, type: true, area: true, price: true } },
           project: { select: { id: true, name: true } },
           owner: { select: { id: true, firstName: true, lastName: true } },
@@ -101,7 +97,6 @@ router.get('/:id', authorize('Booking', 'read'), async (req: AuthRequest, res: R
       include: {
         lead: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         opportunity: { select: { id: true, name: true, stage: true } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         unit: { select: { id: true, number: true } },
         project: { select: { id: true, name: true } },
         owner: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -137,7 +132,6 @@ router.post('/', authorize('Booking', 'create'), async (req: AuthRequest, res: R
         quotationId: data.quotationId,
         projectId: data.projectId,
         unitId: data.unitId,
-        customerId: data.customerId,
         ownerId: data.ownerId,
         creatorId: userId,
         queueId: data.queueId,
@@ -243,11 +237,11 @@ router.patch('/:id/confirm', authorize('Booking', 'edit'), async (req: AuthReque
               tenantId,
               userId,
               leadId: existing.leadId,
-              action: 'LEAD_BOOKED',
+              action: 'BOOKING_CONFIRMED',
               objectType: 'Lead',
               objectId: existing.leadId,
               oldValues: { status: 'SITE_VISIT_HAPPENED' },
-              newValues: { status: 'BOOKED', bookingId: booking.id },
+              newValues: { status: 'BOOKED', bookingId: booking.id, reason: 'Booking confirmed' },
             },
           });
         }
